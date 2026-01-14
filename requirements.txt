@@ -1,0 +1,6 @@
+dnspython>=2.0.0
+colorama>=0.4.0
+pytest>=7.0
+requests>=2.0
+python-whois>=0.7
+python-dateutil>=2.8

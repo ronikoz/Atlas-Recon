@@ -46,7 +46,7 @@ Use `--json` on commands to emit a JSON result schema that includes:
 ## Plugins
 Python plugins live in `plugins/python` and are executed via the Go runner. Current plugins:
 - `scan_nmap.py` (requires `nmap`)
-- `dns_lookup.py` (requires `nslookup`)
+- `dns_lookup.py` (uses `dnspython` for robust DNS queries; see `plugins/python/README.md`)
 - `osint_domain.py` (requires `whois`)
 - `recon_subdomains.py` (uses crt.sh)
 

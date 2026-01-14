@@ -97,4 +97,54 @@ func BaseInstallers(pkg string, wingetID string, chocoPkg string) map[string][]I
 }
 
 
+// EnsurePythonPackages checks that a Python executable is available and that the
+// requested pip packages are installed. If a package is missing it prompts the
+// user and can install it using `python -m pip install`.
+func EnsurePythonPackages(packages []string, pythonExec string) error {
+	if pythonExec == "" {
+		pythonExec = os.Getenv("CT_PYTHON")
+	}
+	if pythonExec == "" {
+		pythonExec = "python3"
+	}
+
+	if _, err := exec.LookPath(pythonExec); err != nil {
+		fmt.Fprintf(os.Stderr, "python not found: %s\n", pythonExec)
+		consent, err := promptConsent("Install Python now via system package manager?")
+		if err != nil {
+			return err
+		}
+		if !consent {
+			return fmt.Errorf("missing python executable: %s", pythonExec)
+		}
+		return fmt.Errorf("please install Python and re-run")
+	}
+
+	for _, pkg := range packages {
+		cmd := exec.Command(pythonExec, "-m", "pip", "show", pkg)
+		if err := cmd.Run(); err == nil {
+			continue
+		}
+
+		fmt.Fprintf(os.Stderr, "python package %s is not installed\n", pkg)
+		consent, err := promptConsent(fmt.Sprintf("Install %s with %s -m pip install %s?", pkg, pythonExec, pkg))
+		if err != nil {
+			return err
+		}
+		if !consent {
+			return fmt.Errorf("missing python package: %s", pkg)
+		}
+
+		install := exec.Command(pythonExec, "-m", "pip", "install", pkg)
+		install.Stdout = os.Stdout
+		install.Stderr = os.Stderr
+		install.Stdin = os.Stdin
+		if err := install.Run(); err != nil {
+			return fmt.Errorf("failed to install python package %s", pkg)
+		}
+	}
+	return nil
+}
+
+
 // Signed-off-by: ronikoz

@@ -163,7 +163,9 @@ func runOSINT(args []string) error {
 		return nil
 	}
 
-	if err := runner.EnsureDependencies([]runner.Dependency{whoisDependency()}); err != nil {
+	// Ensure Python and required pip packages for the OSINT plugin
+	pyPkgs := []string{"requests", "python-whois", "python-dateutil", "dnspython", "colorama"}
+	if err := runner.EnsurePythonPackages(pyPkgs, cfg.Paths.Python); err != nil {
 		return err
 	}
 
