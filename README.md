@@ -48,6 +48,7 @@ Python plugins live in `plugins/python` and are executed via the Go runner. Curr
 - `scan_nmap.py` (requires `nmap`)
 - `dns_lookup.py` (uses `dnspython` for robust DNS queries; see `plugins/python/README.md`)
 - `osint_domain.py` (requires `whois`)
+- `osint_suite.py` (multi-source OSINT suite; see `plugins/python/README_osint.md`)
 - `recon_subdomains.py` (uses crt.sh)
 
 ## Notes

@@ -160,16 +160,25 @@ func runOSINT(args []string) error {
 	parsed := parseArgs(args)
 	if len(parsed.args) == 0 || isHelp(parsed.args) {
 		fmt.Fprintln(os.Stderr, "usage: ct osint <domain> [--json]")
+		fmt.Fprintln(os.Stderr, "   or: ct osint --category <name> [--source <name>] [--json]")
 		return nil
 	}
 
-	// Ensure Python and required pip packages for the OSINT plugin
-	pyPkgs := []string{"requests", "python-whois", "python-dateutil", "dnspython", "colorama"}
+	useSuite := hasAnyFlag(parsed.args, []string{"--category", "--source", "--list", "--suite"})
+	var pyPkgs []string
+	var script string
+	if useSuite {
+		pyPkgs = []string{"requests"}
+		script = pluginPath("osint_suite.py")
+	} else {
+		// Ensure Python and required pip packages for the OSINT domain plugin
+		pyPkgs = []string{"requests", "python-whois", "python-dateutil", "dnspython", "colorama"}
+		script = pluginPath("osint_domain.py")
+	}
 	if err := runner.EnsurePythonPackages(pyPkgs, cfg.Paths.Python); err != nil {
 		return err
 	}
 
-	script := pluginPath("osint_domain.py")
 	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
 		Stream: !parsed.json,
 		Python: cfg.Paths.Python,
@@ -209,7 +218,7 @@ func runReport(args []string) error {
 }
 
 func runDashboard(args []string) error {
-	return tui.Run()
+	return tui.Run(cfg)
 }
 
 func pluginPath(name string) string {
@@ -219,6 +228,17 @@ func pluginPath(name string) string {
 func isHelp(args []string) bool {
 	joined := strings.Join(args, " ")
 	return strings.Contains(joined, "-h") || strings.Contains(joined, "--help")
+}
+
+func hasAnyFlag(args []string, flags []string) bool {
+	for _, arg := range args {
+		for _, flag := range flags {
+			if arg == flag || strings.HasPrefix(arg, flag+"=") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type parsedFlags struct {
