@@ -225,30 +225,29 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	switch msg := msg.(type) {
 	case resultMsg:
 		m = m.applyResult(msg.Result)
+		// Return immediately for result updates
 		return m, waitForResult(m.results)
+
 	case tea.WindowSizeMsg:
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-12) // Leave room for header/input
-			m.viewport.YPosition = 12
+			m.viewport = viewport.New(msg.Width, msg.Height-14) // Adjusted height
+			m.viewport.YPosition = 14
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - 12
+			m.viewport.Height = msg.Height - 14
 		}
-	}
+		// Also update viewport with current job content on resize
+		m.updateViewportContent()
 
-	// Logic for viewport update when job cursor moves
-	if m.focusIndex == 3 {
-		// Pass keys to viewport if we wanted scrolling
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(msg)
-		return m, cmd
-	}
-
-	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -261,12 +260,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focusPrev()
 			return m, nil
 		case "enter":
-			// If on menu, enter moves to target input
 			if m.focusIndex == 0 {
 				m.focusNext()
 				return m, nil
 			}
-			// If on inputs, enter runs the command
 			return m.runSelected()
 		case "ctrl+d":
 			m.showDetails = !m.showDetails
@@ -275,40 +272,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focusIndex = 0
 			return m, nil
 		case "up", "k":
-			if m.focusIndex == 0 {
-				m.moveCursor(-1)
-				m.updateViewportContent()
+			if m.focusIndex == 0 || m.focusIndex == 3 {
+				m = m.moveCursor(-1)
+				if m.focusIndex == 3 {
+					m.updateViewportContent()
+				}
 				return m, nil
-			} else if m.focusIndex == 3 {
-				// handled by viewport update above?
 			}
 		case "down", "j":
-			if m.focusIndex == 0 {
-				m.moveCursor(1)
-				m.updateViewportContent()
+			if m.focusIndex == 0 || m.focusIndex == 3 {
+				m = m.moveCursor(1)
+				if m.focusIndex == 3 {
+					m.updateViewportContent()
+				}
 				return m, nil
 			}
 		}
 
-		// Only handle menu navigation if focus is on the menu
-		if m.focusIndex == 0 {
-			switch msg.String() {
-			case "q":
-				m.cleanup()
-				return m, tea.Quit
-			}
+		if m.focusIndex == 0 && msg.String() == "q" {
+			m.cleanup()
+			return m, tea.Quit
 		}
 	}
 
-	var cmd tea.Cmd
-	switch m.focusIndex {
-	case 1:
+	// Update inputs
+	if m.focusIndex == 1 {
 		m.targetInput, cmd = m.targetInput.Update(msg)
-	case 2:
+		cmds = append(cmds, cmd)
+	}
+	if m.focusIndex == 2 {
 		m.argsInput, cmd = m.argsInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
-	return m, cmd
+	// Update viewport (allows scrolling with mouse or other keys if not intercepted)
+	// We only pass the message to viewport if it wasn't a navigation key we handled?
+	// Actually, viewport handles mouse events.
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m *model) updateViewportContent() {
