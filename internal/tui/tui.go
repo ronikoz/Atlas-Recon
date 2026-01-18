@@ -377,7 +377,27 @@ func (m *model) cleanup() {
 func (m model) renderCommands() string {
 	b := &strings.Builder{}
 	b.WriteString("Commands:\n")
-	for i, cmd := range m.commands {
+
+	// Pagination logic
+	const maxVisible = 10
+	start := 0
+	end := len(m.commands)
+
+	if len(m.commands) > maxVisible {
+		if m.menuIndex < maxVisible/2 {
+			start = 0
+			end = maxVisible
+		} else if m.menuIndex >= len(m.commands)-maxVisible/2 {
+			start = len(m.commands) - maxVisible
+			end = len(m.commands)
+		} else {
+			start = m.menuIndex - maxVisible/2
+			end = start + maxVisible
+		}
+	}
+
+	for i := start; i < end; i++ {
+		cmd := m.commands[i]
 		cursor := " "
 		if i == m.menuIndex {
 			if m.focusIndex == 0 {
