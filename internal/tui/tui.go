@@ -11,6 +11,7 @@ import (
 	"cli-tools/internal/runner"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -52,6 +53,8 @@ type model struct {
 	results       <-chan runner.Result
 	cancel        context.CancelFunc
 	statusMessage string
+	viewport      viewport.Model
+	ready         bool
 }
 
 var (
@@ -78,7 +81,7 @@ func Run(cfg config.Config) error {
 func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) model {
 	commands := []commandDef{
 		{
-			Name:           "scan (nmap)",
+			Name:           "scan",
 			Description:    "Run nmap service scan via scan_nmap.py",
 			Script:         "scan_nmap.py",
 			RequiresTarget: true,
@@ -86,7 +89,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--ports 80,443",
 		},
 		{
-			Name:           "dns lookup",
+			Name:           "dns",
 			Description:    "Query DNS records via dns_lookup.py",
 			Script:         "dns_lookup.py",
 			RequiresTarget: true,
@@ -94,7 +97,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--types A,AAAA,MX",
 		},
 		{
-			Name:           "osint domain",
+			Name:           "osint",
 			Description:    "crt.sh + whois + DNS enrichment",
 			Script:         "osint_domain.py",
 			RequiresTarget: true,
@@ -109,7 +112,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:    "--category core --username alice",
 		},
 		{
-			Name:           "phone osint",
+			Name:           "phone",
 			Description:    "Phone number parsing & dorks",
 			Script:         "phone_osint.py",
 			RequiresTarget: true,
@@ -117,7 +120,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--json",
 		},
 		{
-			Name:           "geo recon",
+			Name:           "geo",
 			Description:    "Address/Coords to Map Links",
 			Script:         "geo_recon.py",
 			RequiresTarget: true,
@@ -149,7 +152,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--limit 10",
 		},
 		{
-			Name:           "flight radar",
+			Name:           "flight",
 			Description:    "OpenSky overhead flights",
 			Script:         "flight_radar.py",
 			RequiresTarget: true,
@@ -157,7 +160,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--radius 100",
 		},
 		{
-			Name:           "war intel",
+			Name:           "war",
 			Description:    "ISW Reports & Map Links",
 			Script:         "war_intel.py",
 			RequiresTarget: true,
@@ -165,7 +168,7 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--json",
 		},
 		{
-			Name:           "recon subdomains",
+			Name:           "recon",
 			Description:    "crt.sh subdomain recon",
 			Script:         "recon_subdomains.py",
 			RequiresTarget: true,
@@ -226,8 +229,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case resultMsg:
 		m = m.applyResult(msg.Result)
 		return m, waitForResult(m.results)
-	case resultsClosedMsg:
-		return m, nil
+	case tea.WindowSizeMsg:
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width, msg.Height-12) // Leave room for header/input
+			m.viewport.YPosition = 12
+			m.ready = true
+		} else {
+			m.viewport.Width = msg.Width
+			m.viewport.Height = msg.Height - 12
+		}
+	}
+
+	// Logic for viewport update when job cursor moves
+	if m.focusIndex == 3 {
+		// Pass keys to viewport if we wanted scrolling
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+	}
+
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -253,6 +274,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.focusIndex = 0
 			return m, nil
+		case "up", "k":
+			if m.focusIndex == 0 {
+				m.moveCursor(-1)
+				m.updateViewportContent()
+				return m, nil
+			} else if m.focusIndex == 3 {
+				// handled by viewport update above?
+			}
+		case "down", "j":
+			if m.focusIndex == 0 {
+				m.moveCursor(1)
+				m.updateViewportContent()
+				return m, nil
+			}
 		}
 
 		// Only handle menu navigation if focus is on the menu
@@ -261,12 +296,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q":
 				m.cleanup()
 				return m, tea.Quit
-			case "up", "k":
-				m = m.moveCursor(-1)
-				return m, nil
-			case "down", "j":
-				m = m.moveCursor(1)
-				return m, nil
 			}
 		}
 	}
@@ -280,6 +309,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+func (m *model) updateViewportContent() {
+	if len(m.jobs) > 0 && m.jobCursor < len(m.jobs) {
+		job := m.jobs[m.jobCursor]
+		content := fmt.Sprintf("ID: %s\nStatus: %s\nDuration: %dms\n\n", job.ID, job.Status, job.Result.DurationMs)
+		if job.Result.Error != "" {
+			content += fmt.Sprintf("Error:\n%s\n\n", job.Result.Error)
+		}
+		if job.Result.Stdout != "" {
+			content += fmt.Sprintf("%s\n", job.Result.Stdout)
+		}
+		if job.Result.Stderr != "" {
+			content += fmt.Sprintf("STDERR:\n%s\n", job.Result.Stderr)
+		}
+		m.viewport.SetContent(content)
+	} else {
+		m.viewport.SetContent("Select a job to view output.")
+	}
 }
 
 func (m model) View() string {
@@ -298,7 +346,12 @@ func (m model) View() string {
 
 	if m.showDetails {
 		b.WriteString("\n")
-		b.WriteString(m.renderDetails())
+		// Use viewport view
+		if !m.ready {
+			b.WriteString("\n  Initializing...\n")
+		} else {
+			b.WriteString(m.viewport.View())
+		}
 	}
 
 	if m.statusMessage != "" {
@@ -384,38 +437,6 @@ func (m model) renderJobs() string {
 		status := m.formatStatus(job.Status)
 		line := fmt.Sprintf("%s [%s] %s", cursor, status, truncate(job.Title, 60))
 		b.WriteString(line + "\n")
-	}
-	return b.String()
-}
-
-func (m model) renderDetails() string {
-	if len(m.jobs) == 0 {
-		return ""
-	}
-	job := m.jobs[m.jobCursor]
-	b := &strings.Builder{}
-	b.WriteString("Details:\n")
-	b.WriteString(fmt.Sprintf("  ID: %s\n", job.ID))
-	b.WriteString(fmt.Sprintf("  Status: %s\n", job.Status))
-	if job.Result.DurationMs > 0 {
-		b.WriteString(fmt.Sprintf("  Duration: %dms\n", job.Result.DurationMs))
-	}
-	stdout := strings.TrimSpace(job.Result.Stdout)
-	stderr := strings.TrimSpace(job.Result.Stderr)
-	if stdout != "" {
-		b.WriteString("\n  Stdout (tail):\n")
-		b.WriteString(indent(tailLines(stdout, 20), "  "))
-		b.WriteString("\n")
-	}
-	if stderr != "" {
-		b.WriteString("\n  Stderr (tail):\n")
-		b.WriteString(indent(tailLines(stderr, 20), "  "))
-		b.WriteString("\n")
-	}
-	if job.Result.Error != "" {
-		b.WriteString("\n  Error:\n")
-		b.WriteString(indent(job.Result.Error, "  "))
-		b.WriteString("\n")
 	}
 	return b.String()
 }
@@ -538,6 +559,11 @@ func (m model) applyResult(result runner.Result) model {
 				m.jobs[i].Status = "failed"
 			}
 			m.statusMessage = fmt.Sprintf("job finished: %s", m.jobs[i].Title)
+
+			// If this is the currently selected job, update viewport
+			if i == m.jobCursor {
+				m.updateViewportContent()
+			}
 			break
 		}
 	}
