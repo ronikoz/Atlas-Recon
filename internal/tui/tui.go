@@ -237,13 +237,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitForResult(m.results)
 
 	case tea.WindowSizeMsg:
+		// Calculate fixed height of UI components
+		// Header (4) + Commands (8) + Inputs (5) + Jobs (4) + Status (2) = ~23 lines
+		const fixedHeight = 24
+		vpHeight := msg.Height - fixedHeight
+		if vpHeight < 5 {
+			vpHeight = 5 // Minimum usable height
+		}
+
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-14) // Adjusted height
-			m.viewport.YPosition = 14
+			m.viewport = viewport.New(msg.Width, vpHeight)
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - 14
+			m.viewport.Height = vpHeight
 		}
 		// Also update viewport with current job content on resize
 		m.updateViewportContent()
@@ -379,7 +386,7 @@ func (m model) renderCommands() string {
 	b.WriteString("Commands:\n")
 
 	// Pagination logic
-	const maxVisible = 10
+	const maxVisible = 5
 	start := 0
 	end := len(m.commands)
 
@@ -448,7 +455,25 @@ func (m model) renderJobs() string {
 		return b.String()
 	}
 
-	for i, job := range m.jobs {
+	const maxVisible = 3
+	start := 0
+	end := len(m.jobs)
+
+	if len(m.jobs) > maxVisible {
+		if m.jobCursor < maxVisible/2 {
+			start = 0
+			end = maxVisible
+		} else if m.jobCursor >= len(m.jobs)-maxVisible/2 {
+			start = len(m.jobs) - maxVisible
+			end = len(m.jobs)
+		} else {
+			start = m.jobCursor - maxVisible/2
+			end = start + maxVisible
+		}
+	}
+
+	for i := start; i < end; i++ {
+		job := m.jobs[i]
 		cursor := " "
 		if i == m.jobCursor {
 			if m.focusIndex == 3 {
@@ -458,7 +483,7 @@ func (m model) renderJobs() string {
 			}
 		}
 		status := m.formatStatus(job.Status)
-		line := fmt.Sprintf("%s [%s] %s", cursor, status, truncate(job.Title, 60))
+		line := fmt.Sprintf("%s [%s] %s", cursor, status, truncate(job.Title, 50))
 		b.WriteString(line + "\n")
 	}
 	return b.String()
