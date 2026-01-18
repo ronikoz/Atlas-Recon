@@ -8,10 +8,13 @@ import requests
 # https://docs.polymarket.com/
 POLY_API_URL = "https://gamma-api.polymarket.com/events"
 
-def fetch_markets(query, limit=10):
+def fetch_markets(query, limit=100):
+    # Fetch more results than requested to account for fuzzy search noise
+    fetch_limit = 100 if limit < 100 else limit
+    
     params = {
         "q": query,
-        "limit": limit,
+        "limit": fetch_limit,
         "closed": "false", # fetch only open markets
         "sort": "volume",  # sort by volume to get most relevant
     }
@@ -27,9 +30,10 @@ def main():
     parser = argparse.ArgumentParser(description="Prediction Market Sentiment (Polymarket)")
     parser.add_argument("query", help="Search term (e.g. 'Election', 'Trump', 'Ukraine')")
     parser.add_argument("--json", action="store_true", help="Output JSON")
-    parser.add_argument("--limit", type=int, default=5, help="Max markets")
+    parser.add_argument("--limit", type=int, default=5, help="Max markets to display")
     args = parser.parse_args()
 
+    # Pass the user's limit but the function will upgrade it to ensure we find matches
     data = fetch_markets(args.query, args.limit)
 
     if args.json:
@@ -72,6 +76,9 @@ def main():
                 continue
                 
             filtered_count += 1
+            if filtered_count > args.limit:
+                break
+
             print(f"Event: {title}")
             
             for m in relevant_markets:
