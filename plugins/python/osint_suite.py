@@ -286,7 +286,36 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--opencti-token")
     parser.add_argument("--extra-args", help="extra args appended to CLI tools")
     parser.add_argument("--json", action="store_true", help="output JSON")
+    parser.add_argument("generic_target", nargs="?", help="smart target (domain, ip, or username)")
     return parser.parse_args(argv)
+
+
+def assign_smart_target(args: argparse.Namespace):
+    """Heuristic to assign generic_target to specific fields if not set."""
+    if not args.generic_target:
+        return
+
+    val = args.generic_target
+    
+    # Simple IP check
+    import re
+    is_ip = re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", val)
+    
+    # Simple Domain check (contains dot, no spaces, not ip)
+    is_domain = not is_ip and "." in val and " " not in val
+
+    if is_ip:
+        if not args.ip: args.ip = val
+        if not args.target: args.target = val
+        # Also could be a username in weird cases, but unlikely
+    elif is_domain:
+        if not args.domain: args.domain = val
+        if not args.target: args.target = val
+    else:
+        # Assume username or generic query
+        if not args.username: args.username = val
+        if not args.query: args.query = val
+        # Some tools use target for url/domain/ip, but sherlock uses username.
 
 
 def run_source(name: str, args: argparse.Namespace) -> Dict[str, Any]:
@@ -312,6 +341,8 @@ def run_source(name: str, args: argparse.Namespace) -> Dict[str, Any]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
+    assign_smart_target(args)
+    
     if args.list:
         print(list_sources())
         return 0

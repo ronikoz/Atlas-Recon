@@ -105,11 +105,11 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			TargetHint:     "example.com",
 			ArgsHint:       "--enrich-dns",
 		},
-		{
 			Name:        "osint suite",
 			Description: "Multi-source OSINT (Arrow keys to cycle category)",
 			Script:      "osint_suite.py",
-			TargetHint:  "",
+			RequiresTarget: true,
+			TargetHint:  "domain/user/ip",
 			ArgsHint:    "--username alice",
 			ArgsOptions: []string{
 				"--category core",
