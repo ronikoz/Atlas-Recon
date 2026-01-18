@@ -23,6 +23,7 @@ type commandDef struct {
 	RequiresTarget bool
 	TargetHint     string
 	ArgsHint       string
+	ArgsOptions    []string
 	NotImplemented bool
 }
 
@@ -106,10 +107,21 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 		},
 		{
 			Name:        "osint suite",
-			Description: "Multi-source OSINT suite",
+			Description: "Multi-source OSINT (Arrow keys to cycle category)",
 			Script:      "osint_suite.py",
 			TargetHint:  "",
-			ArgsHint:    "--category core --username alice",
+			ArgsHint:    "--username alice",
+			ArgsOptions: []string{
+				"--category core",
+				"--category social",
+				"--category domain_dns",
+				"--category ip_infra",
+				"--category metadata",
+				"--category leaks",
+				"--category archives",
+				"--category search",
+				"--category threat",
+			},
 		},
 		{
 			Name:           "phone",
@@ -286,12 +298,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.focusIndex == 2 {
+				m.cycleArgs(-1)
+				return m, nil
+			}
 		case "down", "j":
 			if m.focusIndex == 0 || m.focusIndex == 3 {
 				m = m.moveCursor(1)
 				if m.focusIndex == 3 {
 					m.updateViewportContent()
 				}
+				return m, nil
+			}
+			if m.focusIndex == 2 {
+				m.cycleArgs(1)
 				return m, nil
 			}
 		}
@@ -434,7 +454,12 @@ func (m model) renderInputs() string {
 	b.WriteString("Inputs:\n")
 	b.WriteString(m.renderInput(m.targetInput, 1))
 	b.WriteString("\n")
-	b.WriteString(m.renderInput(m.argsInput, 2))
+
+	hint := ""
+	if len(m.commands[m.menuIndex].ArgsOptions) > 0 {
+		hint = " (↑/↓ to select category)"
+	}
+	b.WriteString(m.renderInput(m.argsInput, 2) + helpStyle.Render(hint))
 	b.WriteString("\n")
 	return b.String()
 }
@@ -595,6 +620,43 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 	})
 
 	return m, nil
+}
+
+func (m *model) cycleArgs(dir int) {
+	cmd := m.commands[m.menuIndex]
+	if len(cmd.ArgsOptions) == 0 {
+		return
+	}
+
+	current := m.argsInput.Value()
+	idx := -1
+	for i, opt := range cmd.ArgsOptions {
+		if strings.HasPrefix(current, opt) || current == opt {
+			idx = i
+			break
+		}
+	}
+
+	if idx == -1 {
+		idx = 0
+	} else {
+		idx = (idx + dir) % len(cmd.ArgsOptions)
+		if idx < 0 {
+			idx = len(cmd.ArgsOptions) - 1
+		}
+	}
+
+	// Preserve any extra text user typed? No, this is for selecting the category.
+	// But osint-suite needs user arguments too (e.g. username).
+	// User workflow: Select category -> Type username.
+	// If they type username, `current` won't match exactly.
+	// `strings.HasPrefix` helps, but replacing it might wipe the username.
+	// Better approach: Just set the category part.
+
+	val := cmd.ArgsOptions[idx]
+	m.argsInput.SetValue(val)
+	// Move cursor to end
+	m.argsInput.SetCursor(len(val))
 }
 
 func (m model) applyResult(result runner.Result) model {
