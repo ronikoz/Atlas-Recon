@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,6 +93,31 @@ func commandSet() map[string]command {
 			description: "Launch TUI dashboard",
 			run:         runDashboard,
 		},
+		"phone": {
+			name:        "phone",
+			description: "Phone number OSINT",
+			run:         runPhone,
+		},
+		"geo": {
+			name:        "geo",
+			description: "Geospatial reconnaissance",
+			run:         runGeo,
+		},
+		"conflict": {
+			name:        "conflict",
+			description: "Geopolitical conflict data (GDELT)",
+			run:         runConflict,
+		},
+		"markets": {
+			name:        "markets",
+			description: "Prediction markets (Polymarket)",
+			run:         runMarkets,
+		},
+		"social": {
+			name:        "social",
+			description: "Social media pulse (Bluesky)",
+			run:         runSocial,
+		},
 	}
 }
 
@@ -101,7 +125,7 @@ func printUsage(cmds map[string]command) {
 	fmt.Fprintln(os.Stderr, "CLI Tools: multi-command security toolkit")
 	fmt.Fprintln(os.Stderr, "\nUsage: ct [--config path] <command> [args]")
 	fmt.Fprintln(os.Stderr, "\nCommands:")
-	order := []string{"scan", "dns", "osint", "recon", "web", "report", "dashboard"}
+	order := []string{"scan", "dns", "osint", "phone", "geo", "conflict", "markets", "social", "recon", "web", "report", "dashboard"}
 	for _, name := range order {
 		if cmd, ok := cmds[name]; ok {
 			fmt.Fprintf(os.Stderr, "  %-10s %s\n", cmd.name, cmd.description)
@@ -210,11 +234,157 @@ func runRecon(args []string) error {
 }
 
 func runWeb(args []string) error {
-	return errors.New("web command not implemented yet")
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct web <url> [--json]")
+		return nil
+	}
+
+	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+
+	script := pluginPath("web_check.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("web")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
 }
 
 func runReport(args []string) error {
-	return errors.New("report command not implemented yet")
+	parsed := parseArgs(args)
+	// Report doesn't strictly need a target, but often takes files.
+	// If no args, show help
+	if len(parsed.args) == 0 && !hasAnyFlag(parsed.args, []string{"--title", "--output"}) {
+		fmt.Fprintln(os.Stderr, "usage: ct report [files...] [--title <text>] [--output <file>]")
+		return nil
+	}
+
+	script := pluginPath("generate_report.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("report")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runPhone(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct phone <number> [--json]")
+		return nil
+	}
+
+	if err := runner.EnsurePythonPackages([]string{"phonenumbers"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+
+	script := pluginPath("phone_osint.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("phone")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runGeo(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct geo <query> [--json]")
+		return nil
+	}
+
+	if err := runner.EnsurePythonPackages([]string{"geopy"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+
+	script := pluginPath("geo_recon.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("geo")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runConflict(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct conflict <query> [--json]")
+		return nil
+	}
+	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+	script := pluginPath("conflict_view.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("conflict")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runMarkets(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct markets <query> [--json]")
+		return nil
+	}
+	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+	script := pluginPath("market_sentiment.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("markets")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runSocial(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct social <query> [--json]")
+		return nil
+	}
+	// atproto requires requests too, but let's check basic requests first as it is used in the plugin manually
+	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+	script := pluginPath("social_pulse.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("social")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
 }
 
 func runDashboard(args []string) error {
@@ -326,6 +496,5 @@ func whoisDependency() runner.Dependency {
 		Installers:  runner.BaseInstallers("whois", "Sysinternals.Whois", "whois"),
 	}
 }
-
 
 // Signed-off-by: ronikoz

@@ -24,11 +24,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
-try:
-    import requests
-except Exception:
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    try:
+        import requests
+        import urllib3
+        urllib3.disable_warnings()
+    except Exception:
+        pass
+
+if 'requests' not in sys.modules:
     print("requests is required. Install with: pip install requests", file=sys.stderr)
-    raise
+    raise ImportError("missing requests")
 
 try:
     import whois as pywhois

@@ -10,19 +10,19 @@ import (
 	"cli-tools/internal/config"
 	"cli-tools/internal/runner"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 type commandDef struct {
-	Name            string
-	Description     string
-	Script          string
-	RequiresTarget  bool
-	TargetHint      string
-	ArgsHint        string
-	NotImplemented  bool
+	Name           string
+	Description    string
+	Script         string
+	RequiresTarget bool
+	TargetHint     string
+	ArgsHint       string
+	NotImplemented bool
 }
 
 type uiJob struct {
@@ -109,6 +109,46 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:    "--category core --username alice",
 		},
 		{
+			Name:           "phone osint",
+			Description:    "Phone number parsing & dorks",
+			Script:         "phone_osint.py",
+			RequiresTarget: true,
+			TargetHint:     "+14155552671",
+			ArgsHint:       "--json",
+		},
+		{
+			Name:           "geo recon",
+			Description:    "Address/Coords to Map Links",
+			Script:         "geo_recon.py",
+			RequiresTarget: true,
+			TargetHint:     "San Francisco, CA",
+			ArgsHint:       "--nasa-key DEMO_KEY",
+		},
+		{
+			Name:           "conflict",
+			Description:    "Global conflict (GDELT)",
+			Script:         "conflict_view.py",
+			RequiresTarget: true,
+			TargetHint:     "Ukraine",
+			ArgsHint:       "--json",
+		},
+		{
+			Name:           "markets",
+			Description:    "Polymarket sentiment",
+			Script:         "market_sentiment.py",
+			RequiresTarget: true,
+			TargetHint:     "Election 2024",
+			ArgsHint:       "--limit 5",
+		},
+		{
+			Name:           "social",
+			Description:    "BlueSky pulse",
+			Script:         "social_pulse.py",
+			RequiresTarget: true,
+			TargetHint:     "OSINT",
+			ArgsHint:       "--limit 10",
+		},
+		{
 			Name:           "recon subdomains",
 			Description:    "crt.sh subdomain recon",
 			Script:         "recon_subdomains.py",
@@ -118,13 +158,18 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 		},
 		{
 			Name:           "web",
-			Description:    "Web checks (not implemented)",
-			NotImplemented: true,
+			Description:    "Basic web/SSL checks",
+			Script:         "web_check.py",
+			RequiresTarget: true,
+			TargetHint:     "example.com",
+			ArgsHint:       "--timeout 5",
 		},
 		{
-			Name:           "report",
-			Description:    "Reporting (not implemented)",
-			NotImplemented: true,
+			Name:        "report",
+			Description: "Generate report",
+			Script:      "generate_report.py",
+			TargetHint:  "",
+			ArgsHint:    "--title 'My Scan' --output result.md",
 		},
 	}
 
@@ -520,6 +565,5 @@ func truncate(text string, limit int) string {
 	}
 	return text[:limit-3] + "..."
 }
-
 
 // Signed-off-by: ronikoz

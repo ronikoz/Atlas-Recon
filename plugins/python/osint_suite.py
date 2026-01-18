@@ -15,11 +15,19 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-try:
-    import requests
-except Exception:
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    try:
+        import requests
+        import urllib3
+        urllib3.disable_warnings()
+    except Exception:
+        pass
+
+if 'requests' not in sys.modules:
     print("requests is required. Install with: pip install requests", file=sys.stderr)
-    raise
+    raise ImportError("missing requests")
 
 
 def run_cli(cmd: List[str], timeout: float) -> Dict[str, Any]:
