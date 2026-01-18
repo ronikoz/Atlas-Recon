@@ -234,6 +234,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+d":
 			m.showDetails = !m.showDetails
 			return m, nil
+		case "esc":
+			m.focusIndex = 0
+			return m, nil
 		}
 
 		// Only handle menu navigation if focus is on the menu
@@ -268,7 +271,7 @@ func (m model) View() string {
 
 	b.WriteString(headerStyle.Render("CLI Tools Dashboard"))
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("tab: next  enter: select/run  ctrl+d: details  ctrl+c: quit"))
+	b.WriteString(helpStyle.Render("tab: next  enter: select/run  esc: menu  ctrl+d: details  ctrl+c: quit"))
 	b.WriteString("\n\n")
 
 	b.WriteString(m.renderCommands())
