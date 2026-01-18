@@ -214,7 +214,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			m.cleanup()
 			return m, tea.Quit
 		case "tab":
@@ -223,17 +223,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			m.focusPrev()
 			return m, nil
-		case "r":
+		case "enter":
+			// If on menu, enter moves to target input
+			if m.focusIndex == 0 {
+				m.focusNext()
+				return m, nil
+			}
+			// If on inputs, enter runs the command
 			return m.runSelected()
-		case "d":
+		case "ctrl+d":
 			m.showDetails = !m.showDetails
 			return m, nil
-		case "up", "k":
-			m = m.moveCursor(-1)
-			return m, nil
-		case "down", "j":
-			m = m.moveCursor(1)
-			return m, nil
+		}
+
+		// Only handle menu navigation if focus is on the menu
+		if m.focusIndex == 0 {
+			switch msg.String() {
+			case "q":
+				m.cleanup()
+				return m, tea.Quit
+			case "up", "k":
+				m = m.moveCursor(-1)
+				return m, nil
+			case "down", "j":
+				m = m.moveCursor(1)
+				return m, nil
+			}
 		}
 	}
 
@@ -253,7 +268,7 @@ func (m model) View() string {
 
 	b.WriteString(headerStyle.Render("CLI Tools Dashboard"))
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("tab/shift+tab: move  r: run  d: toggle details  q: quit"))
+	b.WriteString(helpStyle.Render("tab: next  enter: select/run  ctrl+d: details  ctrl+c: quit"))
 	b.WriteString("\n\n")
 
 	b.WriteString(m.renderCommands())
