@@ -48,19 +48,34 @@ def main():
             print("No markets found.")
             return
 
+        query_lower = args.query.lower()
+        
+        filtered_count = 0
         for event in data:
-            title = event.get("title")
+            title = event.get("title", "")
+            markets = event.get("markets", [])
+            
+            # Filter: Check if query matches Title or any Market question
+            # Polymarket's search API is sometimes fuzzy/broad.
+            
+            relevant_markets = []
+            for m in markets:
+                q_text = m.get("question", "")
+                if query_lower in title.lower() or query_lower in q_text.lower():
+                    relevant_markets.append(m)
+
+            # If no specific market matched but the Event Title matched, show all Top 3 markets
+            if not relevant_markets and query_lower in title.lower():
+                 relevant_markets = markets[:3]
+
+            if not relevant_markets:
+                continue
+                
+            filtered_count += 1
             print(f"Event: {title}")
             
-            markets = event.get("markets", [])
-            for m in markets:
+            for m in relevant_markets:
                 question = m.get("question")
-                outcome = m.get("outcomePrices") # JSON string sometimes, or dict
-                
-                # Try to parse current probability if simple Yes/No
-                # Typically valid outcomes are ["Yes", "No"]
-                # outcomePrices might be '["0.65", "0.35"]'
-                
                 print(f"  - {question}")
                 try:
                     prices = json.loads(m.get("outcomePrices", "[]"))
@@ -69,10 +84,15 @@ def main():
                     if len(prices) == len(outcomes):
                         for i, name in enumerate(outcomes):
                             prob = float(prices[i]) * 100
-                            print(f"    {name}: {prob:.1f}%")
+                            # Highlight the likely winner
+                            marker = "*" if prob > 50 else " "
+                            print(f"    {marker} {name}: {prob:.1f}%")
                 except:
                     pass
             print("")
+        
+        if filtered_count == 0:
+             print(f"No relevant markets found for '{args.query}' (API returned unrelated results).")
 
 if __name__ == "__main__":
     main()
