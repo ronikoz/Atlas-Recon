@@ -149,6 +149,22 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			ArgsHint:       "--limit 10",
 		},
 		{
+			Name:           "flight radar",
+			Description:    "OpenSky overhead flights",
+			Script:         "flight_radar.py",
+			RequiresTarget: true,
+			TargetHint:     "Kyiv",
+			ArgsHint:       "--radius 100",
+		},
+		{
+			Name:           "war intel",
+			Description:    "ISW Reports & Map Links",
+			Script:         "war_intel.py",
+			RequiresTarget: true,
+			TargetHint:     "Ukraine",
+			ArgsHint:       "--json",
+		},
+		{
 			Name:           "recon subdomains",
 			Description:    "crt.sh subdomain recon",
 			Script:         "recon_subdomains.py",

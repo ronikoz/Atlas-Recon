@@ -118,6 +118,16 @@ func commandSet() map[string]command {
 			description: "Social media pulse (Bluesky)",
 			run:         runSocial,
 		},
+		"flight": {
+			name:        "flight",
+			description: "Live flight radar (OpenSky)",
+			run:         runFlight,
+		},
+		"war": {
+			name:        "war",
+			description: "War Intel Edge (ISW + Maps)",
+			run:         runWar,
+		},
 	}
 }
 
@@ -125,7 +135,7 @@ func printUsage(cmds map[string]command) {
 	fmt.Fprintln(os.Stderr, "CLI Tools: multi-command security toolkit")
 	fmt.Fprintln(os.Stderr, "\nUsage: ct [--config path] <command> [args]")
 	fmt.Fprintln(os.Stderr, "\nCommands:")
-	order := []string{"scan", "dns", "osint", "phone", "geo", "conflict", "markets", "social", "recon", "web", "report", "dashboard"}
+	order := []string{"scan", "dns", "osint", "phone", "geo", "conflict", "markets", "social", "flight", "war", "recon", "web", "report", "dashboard"}
 	for _, name := range order {
 		if cmd, ok := cmds[name]; ok {
 			fmt.Fprintf(os.Stderr, "  %-10s %s\n", cmd.name, cmd.description)
@@ -381,6 +391,48 @@ func runSocial(args []string) error {
 		Python: cfg.Paths.Python,
 	})
 	result.ID = resultID("social")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runFlight(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct flight <target> [--radius km] [--json]")
+		return nil
+	}
+	if err := runner.EnsurePythonPackages([]string{"requests", "geopy"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+	script := pluginPath("flight_radar.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("flight")
+	if parsed.json {
+		return emitJSON(result, err)
+	}
+	return err
+}
+
+func runWar(args []string) error {
+	parsed := parseArgs(args)
+	if len(parsed.args) == 0 || isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct war <target> [--json]")
+		return nil
+	}
+	if err := runner.EnsurePythonPackages([]string{"requests", "geopy"}, cfg.Paths.Python); err != nil {
+		return err
+	}
+	script := pluginPath("war_intel.py")
+	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+		Stream: !parsed.json,
+		Python: cfg.Paths.Python,
+	})
+	result.ID = resultID("war")
 	if parsed.json {
 		return emitJSON(result, err)
 	}
