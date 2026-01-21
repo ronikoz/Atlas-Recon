@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"cli-tools/internal/config"
+	"cli-tools/internal/plugins"
 	"cli-tools/internal/runner"
+	"cli-tools/internal/scanner"
 	"cli-tools/internal/tui"
 )
 
@@ -26,7 +28,11 @@ func Execute(argv []string) int {
 	cfgPath, argv := extractConfigPath(argv)
 	cfg, err = config.Load(cfgPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config load failed: %v\n", err)
+		displayCfg := cfgPath
+		if displayCfg == "" {
+			displayCfg = "(default)"
+		}
+		fmt.Fprintf(os.Stderr, "config load failed (%s): %v\n", displayCfg, err)
 		return 1
 	}
 
@@ -151,20 +157,52 @@ func runScan(args []string) error {
 		return nil
 	}
 
-	if err := runner.EnsureDependencies([]runner.Dependency{nmapDependency()}); err != nil {
+	target := parsed.args[0]
+	portSpec := ""
+
+	// Extract --ports argument
+	for i, arg := range parsed.args {
+		if arg == "--ports" && i+1 < len(parsed.args) {
+			portSpec = parsed.args[i+1]
+			break
+		}
+	}
+
+	// Parse ports
+	ports, err := scanner.ParsePorts(portSpec)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error parsing ports: %v\n", err)
 		return err
 	}
 
-	script := pluginPath("scan_nmap.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("scan")
+	// Run native scanner
+	s := scanner.NewScanner(3*time.Second, 100)
+	result := s.ScanHost(target, ports)
+
 	if parsed.json {
-		return emitJSON(result, err)
+		jsonOutput, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(jsonOutput))
+	} else {
+		fmt.Printf("Scan Results for %s\n", result.Host)
+		fmt.Printf("Duration: %dms\n\n", result.EndTime.Sub(result.StartTime).Milliseconds())
+
+		if result.Error != "" {
+			fmt.Printf("Error: %s\n", result.Error)
+		} else {
+			openPorts := 0
+			for _, port := range result.Ports {
+				if port.State == "open" {
+					openPorts++
+					fmt.Printf("Port %d: %s (%s)\n", port.Port, port.State, port.Service)
+				}
+			}
+
+			closedPorts := len(result.Ports) - openPorts
+			fmt.Printf("\nSummary: %d open, %d closed/filtered\n", openPorts, closedPorts)
+		}
 	}
-	return err
+
+	return nil
 }
 
 func runDNS(args []string) error {
@@ -444,6 +482,12 @@ func runDashboard(args []string) error {
 }
 
 func pluginPath(name string) string {
+	// Use the embedded plugin resolver
+	path, err := plugins.GetPluginPath(name)
+	if err == nil {
+		return path
+	}
+	// Fallback to relative path (will error in runner with clear message)
 	return filepath.Join("plugins", "python", name)
 }
 
@@ -485,6 +529,10 @@ func emitJSON(result runner.Result, runErr error) error {
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(result); err != nil {
 		return err
+	}
+	// Return error to propagate exit code
+	if result.ExitCode != 0 {
+		return fmt.Errorf("exit code: %d", result.ExitCode)
 	}
 	return runErr
 }

@@ -2,22 +2,28 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"time"
+
+	"cli-tools/internal/plugins"
 )
 
 const defaultPython = "python3"
 
 type RunOptions struct {
-	Stream bool
-	Python string
+	Stream  bool
+	Python  string
+	Timeout time.Duration
 }
 
 // RunPython executes a python plugin script and streams output to the console.
+// If scriptPath is a relative path, it will attempt to locate the plugin from
+// the embedded filesystem first, then fall back to the filesystem.
 func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error) {
 	python := opts.Python
 	if python == "" {
@@ -27,11 +33,23 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 		python = defaultPython
 	}
 
-	if _, err := os.Stat(scriptPath); err != nil {
-		return Result{}, fmt.Errorf("plugin not found: %s", scriptPath)
+	// Try to resolve plugin path (from embedded or filesystem)
+	resolvedPath, pluginErr := plugins.GetPluginPath(scriptPath)
+	if pluginErr == nil {
+		scriptPath = resolvedPath
+	} else if _, statErr := os.Stat(scriptPath); statErr != nil {
+		// If plugin not found through either method, return error
+		return Result{}, fmt.Errorf("plugin not found: %s (%v)", scriptPath, pluginErr)
 	}
 
-	cmd := exec.Command(python, append([]string{scriptPath}, args...)...)
+	ctx := context.Background()
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
+	cmd := exec.CommandContext(ctx, python, append([]string{scriptPath}, args...)...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 
@@ -78,6 +96,5 @@ func exitCode(err error) int {
 	}
 	return 1
 }
-
 
 // Signed-off-by: ronikoz

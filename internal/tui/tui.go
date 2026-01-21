@@ -105,12 +105,13 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 			TargetHint:     "example.com",
 			ArgsHint:       "--enrich-dns",
 		},
-			Name:        "osint suite",
-			Description: "Multi-source OSINT (Arrow keys to cycle category)",
-			Script:      "osint_suite.py",
+		{
+			Name:           "osint suite",
+			Description:    "Multi-source OSINT (Arrow keys to cycle category)",
+			Script:         "osint_suite.py",
 			RequiresTarget: true,
-			TargetHint:  "domain/user/ip",
-			ArgsHint:    "--username alice",
+			TargetHint:     "domain/user/ip",
+			ArgsHint:       "--username alice",
 			ArgsOptions: []string{
 				"--category core",
 				"--category social",
@@ -247,6 +248,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyResult(msg.Result)
 		// Return immediately for result updates
 		return m, waitForResult(m.results)
+
+	case resultsClosedMsg:
+		m.cleanup()
+		return m, tea.Quit
 
 	case tea.WindowSizeMsg:
 		// Calculate fixed height of UI components
@@ -404,6 +409,11 @@ func (m *model) cleanup() {
 func (m model) renderCommands() string {
 	b := &strings.Builder{}
 	b.WriteString("Commands:\n")
+
+	if len(m.commands) == 0 {
+		b.WriteString("  (no commands available)\n")
+		return b.String()
+	}
 
 	// Pagination logic
 	const maxVisible = 5
@@ -630,8 +640,10 @@ func (m *model) cycleArgs(dir int) {
 
 	current := m.argsInput.Value()
 	idx := -1
+
+	// Find which option is currently selected
 	for i, opt := range cmd.ArgsOptions {
-		if strings.HasPrefix(current, opt) || current == opt {
+		if strings.HasPrefix(current, opt) {
 			idx = i
 			break
 		}
@@ -646,16 +658,31 @@ func (m *model) cycleArgs(dir int) {
 		}
 	}
 
-	// Preserve any extra text user typed? No, this is for selecting the category.
-	// But osint-suite needs user arguments too (e.g. username).
-	// User workflow: Select category -> Type username.
-	// If they type username, `current` won't match exactly.
-	// `strings.HasPrefix` helps, but replacing it might wipe the username.
-	// Better approach: Just set the category part.
+	// Extract any user arguments after the category
+	var extraArgs string
+	if len(current) > 0 {
+		parts := strings.Fields(current)
+		// Find parts that don't match any category option
+		var extra []string
+		for _, part := range parts {
+			isCategory := false
+			for _, opt := range cmd.ArgsOptions {
+				if strings.HasPrefix(part, strings.Fields(opt)[0]) {
+					isCategory = true
+					break
+				}
+			}
+			if !isCategory {
+				extra = append(extra, part)
+			}
+		}
+		if len(extra) > 0 {
+			extraArgs = " " + strings.Join(extra, " ")
+		}
+	}
 
-	val := cmd.ArgsOptions[idx]
+	val := cmd.ArgsOptions[idx] + extraArgs
 	m.argsInput.SetValue(val)
-	// Move cursor to end
 	m.argsInput.SetCursor(len(val))
 }
 

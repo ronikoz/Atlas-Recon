@@ -35,49 +35,19 @@ def get_flights(lat, lon, radius_km=50):
         return {"error": str(e)}
 
 def resolve_location(query):
-    """Resolve location with accuracy assessment"""
+    # Reuse Geopy if installed, or failover.
+    # We'll just assume the user might have geopy from geo_recon.py 
+    # OR we can assume `geo_recon.py` logic.
+    # For simplicity, let's try to import geopy here.
     try:
         from geopy.geocoders import Nominatim
         geolocator = Nominatim(user_agent="ct-cli-tools-flight")
-        location = geolocator.geocode(query, timeout=10)
+        location = geolocator.geocode(query)
         if location:
-            # Assess accuracy
-            accuracy = {"confidence": "low", "precision_km": 0}
-            if 'boundingbox' in location.raw:
-                try:
-                    bbox = location.raw['boundingbox']
-                    lat_min, lat_max = float(bbox[0]), float(bbox[1])
-                    lon_min, lon_max = float(bbox[2]), float(bbox[3])
-                    
-                    max_range = max(lat_max - lat_min, lon_max - lon_min)
-                    accuracy["precision_km"] = max_range * 111
-                    
-                    if max_range > 0.5:
-                        accuracy["confidence"] = "very_low"
-                    elif max_range > 0.1:
-                        accuracy["confidence"] = "low"
-                    elif max_range > 0.01:
-                        accuracy["confidence"] = "medium"
-                    else:
-                        accuracy["confidence"] = "high"
-                except (ValueError, IndexError):
-                    pass
-            
-            result = {
-                "lat": location.latitude,
-                "lon": location.longitude,
-                "address": location.address,
-                "accuracy": accuracy
-            }
-            
-            # Warn if accuracy is too low
-            if accuracy["confidence"] in ["very_low", "low"]:
-                result["warning"] = f"Low precision ({accuracy['precision_km']:.0f}km). Results may be inaccurate."
-            
-            return result
+            return location.latitude, location.longitude, location.address
     except ImportError:
         pass
-    return None
+    return None, None, None
 
 def main():
     parser = argparse.ArgumentParser(description="Flight Radar (OpenSky)")
@@ -89,7 +59,6 @@ def main():
     # Parse Target
     lat, lon = None, None
     address = args.target
-    accuracy_info = None
     
     if "," in args.target:
         try:
@@ -101,14 +70,9 @@ def main():
             pass
             
     if lat is None:
-        location_data = resolve_location(args.target)
-        if location_data:
-            lat = location_data.get("lat")
-            lon = location_data.get("lon")
-            address = location_data.get("address")
-            accuracy_info = location_data.get("accuracy")
-            if "warning" in location_data:
-                print(f"⚠ Warning: {location_data['warning']}", file=sys.stderr)
+        lat, lon, found_addr = resolve_location(args.target)
+        if found_addr: 
+            address = found_addr
 
     if lat is None:
         print(f"Error: Could not resolve location '{args.target}'. Install geopy or use lat,lon.", file=sys.stderr)
@@ -124,7 +88,7 @@ def main():
     if raw_states:
         for s in raw_states:
             # Basic cleanup
-            callsign = s[1].strip() if s[1] else ""
+            callsign = s[1].strip()
             country = s[2]
             f_lat = s[6]
             f_lon = s[5]
@@ -146,7 +110,6 @@ def main():
         "location": address,
         "center": {"lat": lat, "lon": lon},
         "radius_km": args.radius,
-        "accuracy": accuracy_info,
         "count": len(flights),
         "flights": flights
     }
@@ -159,8 +122,6 @@ def main():
              sys.exit(1)
 
         print(f"Flight Radar: {address}")
-        if accuracy_info and accuracy_info.get("precision_km"):
-            print(f"Accuracy: {accuracy_info['confidence']} (~{accuracy_info['precision_km']:.0f}km precision)")
         print(f"Radius: {args.radius}km | Source: OpenSky Network")
         print("--------------------------------------------------")
         

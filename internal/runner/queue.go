@@ -13,10 +13,11 @@ type Job struct {
 }
 
 type Queue struct {
-	limit   int
-	jobs    chan Job
-	results chan Result
-	wg      sync.WaitGroup
+	limit     int
+	jobs      chan Job
+	results   chan Result
+	wg        sync.WaitGroup
+	closeOnce sync.Once
 }
 
 func NewQueue(limit int) *Queue {
@@ -48,7 +49,11 @@ func (q *Queue) Start(ctx context.Context) {
 						result.Error = err.Error()
 						result.Status = StatusFailed
 					}
-					q.results <- result
+					select {
+					case q.results <- result:
+					case <-ctx.Done():
+						return
+					}
 				}
 			}
 		}()
@@ -64,10 +69,11 @@ func (q *Queue) Results() <-chan Result {
 }
 
 func (q *Queue) Stop() {
-	close(q.jobs)
-	q.wg.Wait()
-	close(q.results)
+	q.closeOnce.Do(func() {
+		close(q.jobs)
+		q.wg.Wait()
+		close(q.results)
+	})
 }
-
 
 // Signed-off-by: ronikoz
