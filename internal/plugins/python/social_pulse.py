@@ -5,12 +5,6 @@ import json
 from datetime import datetime
 import requests
 
-try:
-    from atproto import Client
-except ImportError:
-    print("atproto is required. Install with: pip install atproto", file=sys.stderr)
-    sys.exit(1)
-
 def fetch_author_feed(handle, limit=10):
     params = {
         'actor': handle,
@@ -84,12 +78,15 @@ def main():
     # Process results
     posts = data.get("posts", [])
     
+    error = data.get("error")
     results = {
         "query": query,
         "timestamp": datetime.now().isoformat(),
         "count": len(posts),
         "posts": []
     }
+    if error:
+        results["error"] = error
 
     for post in posts:
         record = post.get("record", {})
@@ -108,11 +105,12 @@ def main():
 
     if args.json:
         print(json.dumps(results, indent=2))
+        return 1 if error else 0
     else:
-        if "error" in data:
-             print(f"Error: {data['error']}", file=sys.stderr)
+        if error:
+             print(f"Error: {error}", file=sys.stderr)
              print("Note: Bluesky public search is often restricted. Try a handle like 'bsky.app'.", file=sys.stderr)
-             sys.exit(1)
+             return 1
 
         print(f"Social Pulse: {query}")
         print(f"Source: Bluesky (Public API)")
@@ -126,6 +124,7 @@ def main():
             print(f"  {p['text']}")
             print(f"  [Likes: {p['likes']} Reposts: {p['reposts']}]")
             print("")
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

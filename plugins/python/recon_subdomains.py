@@ -21,6 +21,8 @@ def extract_subdomains(entries, domain):
         name_value = entry.get("name_value", "")
         for name in name_value.splitlines():
             name = name.strip().lower()
+            if name.startswith("*."):
+                name = name[2:]
             if name.endswith(suffix) or name == domain:
                 subdomains.add(name)
     return sorted(subdomains)

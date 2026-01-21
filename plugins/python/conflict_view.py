@@ -62,13 +62,21 @@ def main():
     
     # Get Volume Timeline (optional, maybe just for JSON output or summary)
     timeline = fetch_timeline(args.query)
+    timeline_entries = []
+    timeline_error = None
+    if isinstance(timeline, dict) and "error" in timeline:
+        timeline_error = timeline["error"]
+    else:
+        timeline_entries = timeline.get("timeline", [])
 
     results = {
         "query": args.query,
         "timestamp": datetime.now().isoformat(),
         "articles": articles.get("articles", []),
-        "timeline": timeline.get("timeline", [])
+        "timeline": timeline_entries
     }
+    if timeline_error:
+        results["timeline_error"] = timeline_error
 
     if args.json:
         print(json.dumps(results, indent=2))

@@ -3,7 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -80,7 +79,7 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 	if err != nil {
 		result.Status = StatusFailed
 		result.Error = err.Error()
-		return result, errors.New("python runner failed")
+		return result, fmt.Errorf("python runner failed: %w", err)
 	}
 
 	result.Status = StatusSuccess

@@ -26,6 +26,17 @@ def fetch_markets(query, limit=100):
     except Exception as e:
         return {"error": str(e)}
 
+
+def parse_field(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    return []
+
 def main():
     parser = argparse.ArgumentParser(description="Prediction Market Sentiment (Polymarket)")
     parser.add_argument("query", help="Search term (e.g. 'Election', 'Trump', 'Ukraine')")
@@ -84,18 +95,18 @@ def main():
             for m in relevant_markets:
                 question = m.get("question")
                 print(f"  - {question}")
-                try:
-                    prices = json.loads(m.get("outcomePrices", "[]"))
-                    outcomes = json.loads(m.get("outcomes", "[]"))
-                    
-                    if len(prices) == len(outcomes):
-                        for i, name in enumerate(outcomes):
+                prices = parse_field(m.get("outcomePrices", []))
+                outcomes = parse_field(m.get("outcomes", []))
+
+                if len(prices) == len(outcomes):
+                    for i, name in enumerate(outcomes):
+                        try:
                             prob = float(prices[i]) * 100
-                            # Highlight the likely winner
-                            marker = "*" if prob > 50 else " "
-                            print(f"    {marker} {name}: {prob:.1f}%")
-                except:
-                    pass
+                        except (TypeError, ValueError):
+                            continue
+                        # Highlight the likely winner
+                        marker = "*" if prob > 50 else " "
+                        print(f"    {marker} {name}: {prob:.1f}%")
             print("")
         
         if filtered_count == 0:

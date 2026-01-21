@@ -66,7 +66,8 @@ def main():
         url = "https://" + url
 
     parsed = urlparse(url)
-    hostname = parsed.netloc
+    hostname = parsed.hostname or parsed.netloc
+    port = parsed.port
 
     results = {
         "target": url,
@@ -75,7 +76,7 @@ def main():
     }
 
     if url.startswith("https"):
-        results["ssl"] = check_ssl(hostname)
+        results["ssl"] = check_ssl(hostname, port or 443)
 
     if args.json:
         print(json.dumps(results, indent=2))

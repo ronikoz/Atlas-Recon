@@ -27,10 +27,10 @@ def get_isw_updates(limit=5):
         for item in root.findall('.//item'):
             if count >= limit: break
             
-            title = item.find('title').text
-            link = item.find('link').text
-            desc = item.find('description').text
-            pub_date = item.find('pubDate').text
+            title = item.findtext('title') or "Untitled"
+            link = item.findtext('link') or ""
+            desc = item.findtext('description') or ""
+            pub_date = item.findtext('pubDate') or ""
             
             # Simple content clean up (remove heavy html if needed, but summary usually ok)
             

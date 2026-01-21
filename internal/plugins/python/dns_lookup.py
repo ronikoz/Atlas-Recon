@@ -102,7 +102,7 @@ def query_with_retries(resolver: dns.resolver.Resolver, name: str, rdtype: str, 
         try:
             ipaddress.ip_address(name)
         except ValueError:
-            return [], [f"PTR requires IP address, got: {name}"]
+            return [], f"PTR requires IP address, got: {name}"
     
     for attempt in range(1, retries + 1):
         try:
@@ -132,8 +132,15 @@ def query_domain_types(domain: str, types: List[str], resolver: dns.resolver.Res
     errors: List[str] = []
     dedup: Set[Tuple] = set()
 
+    def clone_resolver() -> dns.resolver.Resolver:
+        new_resolver = dns.resolver.Resolver()
+        new_resolver.nameservers = resolver.nameservers
+        new_resolver.timeout = resolver.timeout
+        new_resolver.lifetime = resolver.lifetime
+        return new_resolver
+
     with ThreadPoolExecutor(max_workers=min(10, max(1, len(types)))) as exc:
-        futures = {exc.submit(query_with_retries, resolver, domain, t, timeout, retries, backoff, dnssec): t for t in types}
+        futures = {exc.submit(query_with_retries, clone_resolver(), domain, t, timeout, retries, backoff, dnssec): t for t in types}
         for fut in as_completed(futures):
             t = futures[fut]
             try:

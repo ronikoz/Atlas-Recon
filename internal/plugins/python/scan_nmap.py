@@ -19,9 +19,12 @@ def validate_ports(ports: str) -> str:
         return ports
     for part in ports.split(','):
         part = part.strip()
-        if ':' in part:  # range like 80:443
+        if not part:
+            continue
+        sep = ":" if ":" in part else "-" if "-" in part else None
+        if sep:
             try:
-                start, end = part.split(':')
+                start, end = part.split(sep)
                 if not (start.isdigit() and end.isdigit()):
                     raise ValueError()
             except (ValueError, TypeError):

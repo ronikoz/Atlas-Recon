@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -53,17 +54,22 @@ func extractPlugin(name string) (string, error) {
 		return "", fmt.Errorf("cannot determine plugin cache directory")
 	}
 
+	safeName := filepath.Base(name)
+	if safeName == "." || safeName == "" || safeName != name || strings.Contains(name, "..") || strings.Contains(name, "\\") {
+		return "", fmt.Errorf("invalid plugin name: %s", name)
+	}
+
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 
 	// Read the embedded file
-	data, err := fs.ReadFile(pluginFS, filepath.Join("python", name))
+	data, err := fs.ReadFile(pluginFS, filepath.Join("python", safeName))
 	if err != nil {
 		return "", fmt.Errorf("plugin not found: %s", name)
 	}
 
 	// Write to cache
-	cachePath := filepath.Join(cacheDir, name)
+	cachePath := filepath.Join(cacheDir, safeName)
 	if err := os.WriteFile(cachePath, data, 0755); err != nil {
 		return "", fmt.Errorf("failed to extract plugin: %w", err)
 	}

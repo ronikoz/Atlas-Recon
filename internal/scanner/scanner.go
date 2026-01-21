@@ -65,10 +65,14 @@ func (s *Scanner) ScanHost(host string, ports []int) *ScanResult {
 	}
 
 	// Resolve host if it's a domain
-	resolvedHost, err := net.ResolveTCPAddr("tcp", host+":80")
+	lookupHost := host
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		lookupHost = splitHost
+	}
+	resolvedHost, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(lookupHost, "80"))
 	if err != nil {
 		// Try just the host
-		ips, err := net.LookupIP(host)
+		ips, err := net.LookupIP(lookupHost)
 		if err != nil {
 			result.Error = fmt.Sprintf("failed to resolve host: %v", err)
 			result.EndTime = time.Now()

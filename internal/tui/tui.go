@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"cli-tools/internal/config"
+	"cli-tools/internal/plugins"
 	"cli-tools/internal/runner"
 
+	"github.com/google/shlex"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -601,7 +603,12 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 		argList = append(argList, target)
 	}
 	if args != "" {
-		argList = append(argList, strings.Fields(args)...)
+		parsedArgs, err := shlex.Split(args)
+		if err != nil {
+			m.statusMessage = "invalid arguments"
+			return m, nil
+		}
+		argList = append(argList, parsedArgs...)
 	}
 
 	id := fmt.Sprintf("dash-%d", time.Now().UnixNano())
@@ -610,12 +617,9 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 		jobTitle += " " + target
 	}
 	job := uiJob{ID: id, Title: jobTitle, Status: "running"}
-	m.jobs = append(m.jobs, job)
-	m.jobCursor = len(m.jobs) - 1
-	m.statusMessage = fmt.Sprintf("queued job: %s", jobTitle)
 
 	script := pluginPath(cmdDef.Script)
-	m.queue.Submit(runner.Job{
+	if err := m.queue.Submit(runner.Job{
 		ID:      id,
 		Command: cmdDef.Name,
 		Args:    argList,
@@ -623,11 +627,19 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 			result, err := runner.RunPython(script, argList, runner.RunOptions{
 				Stream: false,
 				Python: m.cfg.Paths.Python,
+				Timeout: time.Duration(m.cfg.Timeouts.CommandSeconds) * time.Second,
 			})
 			result.ID = id
 			return result, err
 		},
-	})
+	}); err != nil {
+		m.statusMessage = "job queue is stopped"
+		return m, nil
+	}
+
+	m.jobs = append(m.jobs, job)
+	m.jobCursor = len(m.jobs) - 1
+	m.statusMessage = fmt.Sprintf("queued job: %s", jobTitle)
 
 	return m, nil
 }
@@ -720,6 +732,9 @@ func waitForResult(ch <-chan runner.Result) tea.Cmd {
 func pluginPath(name string) string {
 	if name == "" {
 		return ""
+	}
+	if path, err := plugins.GetPluginPath(name); err == nil {
+		return path
 	}
 	return filepath.Join("plugins", "python", name)
 }

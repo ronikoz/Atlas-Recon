@@ -163,7 +163,7 @@ def run_whois(domain: str, timeout: float = 20.0) -> Dict[str, Any]:
         return {"error": str(e)}
 
 
-def enrich_dns(names: Iterable[str], timeout: float = 5.0) -> Dict[str, List[str]]:
+def enrich_dns(names: Iterable[str], timeout: float = 5.0, workers: int = 10) -> Dict[str, List[str]]:
     results: Dict[str, List[str]] = {}
     if dns is None:
         return results
@@ -180,7 +180,7 @@ def enrich_dns(names: Iterable[str], timeout: float = 5.0) -> Dict[str, List[str
                 continue
         return ips
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as exc:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as exc:
         future_map = {exc.submit(resolve, n): n for n in names}
         for fut in concurrent.futures.as_completed(future_map):
             name = future_map[fut]
@@ -233,7 +233,7 @@ def process_domain(domain: str, args) -> Dict[str, Any]:
     result["subdomains"] = subdomains
 
     if args.enrich_dns and subdomains:
-        dnsmap = enrich_dns(subdomains, timeout=args.dns_timeout)
+        dnsmap = enrich_dns(subdomains, timeout=args.dns_timeout, workers=args.workers)
         result["dns"] = dnsmap
         result["clusters"] = cluster_by_ip(dnsmap)
 
@@ -281,12 +281,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args(argv)
 
-    if args.since and dateparser:
-        args.since = dateparser.parse(args.since)
+    if (args.since or args.until) and not dateparser:
+        print("python-dateutil is required for --since/--until. Install with: pip install python-dateutil", file=sys.stderr)
+        return 2
+
+    if args.since:
+        args.since = dateparser.parse(args.since) if dateparser else None
     else:
         args.since = None
-    if args.until and dateparser:
-        args.until = dateparser.parse(args.until)
+    if args.until:
+        args.until = dateparser.parse(args.until) if dateparser else None
     else:
         args.until = None
 

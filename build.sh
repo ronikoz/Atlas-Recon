@@ -10,29 +10,15 @@ PROJECT_ROOT="$SCRIPT_DIR"
 
 echo "🔨 Building CLI-Tools with embedded plugins..."
 
-# Step 1: Ensure internal/plugins directory exists
-if [ ! -d "$PROJECT_ROOT/internal/plugins" ]; then
-    echo "📁 Creating internal/plugins directory..."
-    mkdir -p "$PROJECT_ROOT/internal/plugins"
-fi
+# Step 1: Sync Python plugins from source of truth
+"$PROJECT_ROOT/scripts/sync_plugins.sh"
 
-# Step 2: Copy Python plugins (refresh each build to ensure latest)
-echo "📦 Copying Python plugins to internal/plugins..."
-if [ -d "$PROJECT_ROOT/internal/plugins/python" ]; then
-    rm -rf "$PROJECT_ROOT/internal/plugins/python"
-fi
-cp -r "$PROJECT_ROOT/plugins/python" "$PROJECT_ROOT/internal/plugins/python"
-
-# Step 3: Remove README files to reduce binary size (optional)
-# Comment this out to keep README files
-rm -f "$PROJECT_ROOT/internal/plugins/python/README*.md"
-
-# Step 4: Build the binary
+# Step 2: Build the binary
 echo "🏗️  Building binary..."
 cd "$PROJECT_ROOT"
 go build -o ct ./cmd/ct
 
-# Step 5: Report success
+# Step 3: Report success
 BINARY_SIZE=$(du -h ct | cut -f1)
 echo "✅ Build successful!"
 echo "📊 Binary size: $BINARY_SIZE"

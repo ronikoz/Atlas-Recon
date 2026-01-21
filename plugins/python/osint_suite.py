@@ -8,11 +8,13 @@ validates inputs, builds commands, and runs tools if installed.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Any, Dict, List, Optional
 
 import warnings
@@ -42,12 +44,18 @@ def run_cli(cmd: List[str], timeout: float) -> Dict[str, Any]:
             "command": cmd,
         }
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        with tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+", encoding="utf-8") as stdout_buf, \
+            tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+", encoding="utf-8") as stderr_buf:
+            proc = subprocess.run(cmd, stdout=stdout_buf, stderr=stderr_buf, text=True, timeout=timeout)
+            stdout_buf.seek(0)
+            stderr_buf.seek(0)
+            stdout = stdout_buf.read()
+            stderr = stderr_buf.read()
         return {
             "status": "success" if proc.returncode == 0 else "failed",
             "command": cmd,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
+            "stdout": stdout,
+            "stderr": stderr,
             "exit_code": proc.returncode,
         }
     except subprocess.TimeoutExpired:
@@ -297,9 +305,11 @@ def assign_smart_target(args: argparse.Namespace):
 
     val = args.generic_target
     
-    # Simple IP check
-    import re
-    is_ip = re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", val)
+    try:
+        ipaddress.ip_address(val)
+        is_ip = True
+    except ValueError:
+        is_ip = False
     
     # Simple Domain check (contains dot, no spaces, not ip)
     is_domain = not is_ip and "." in val and " " not in val

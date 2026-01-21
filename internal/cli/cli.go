@@ -176,7 +176,8 @@ func runScan(args []string) error {
 	}
 
 	// Run native scanner
-	s := scanner.NewScanner(3*time.Second, 100)
+	timeout := time.Duration(cfg.Timeouts.CommandSeconds) * time.Second
+	s := scanner.NewScanner(timeout, cfg.Concurrency)
 	result := s.ScanHost(target, ports)
 
 	if parsed.json {
@@ -492,8 +493,12 @@ func pluginPath(name string) string {
 }
 
 func isHelp(args []string) bool {
-	joined := strings.Join(args, " ")
-	return strings.Contains(joined, "-h") || strings.Contains(joined, "--help")
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+	}
+	return false
 }
 
 func hasAnyFlag(args []string, flags []string) bool {
