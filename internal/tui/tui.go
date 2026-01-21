@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"cli-tools/internal/config"
-	"cli-tools/internal/plugins"
-	"cli-tools/internal/runner"
+	"github.com/ronikoz/atlas-recon/internal/config"
+	"github.com/ronikoz/atlas-recon/internal/plugins"
+	"github.com/ronikoz/atlas-recon/internal/runner"
 
 	"github.com/google/shlex"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -370,7 +370,7 @@ func (m *model) updateViewportContent() {
 func (m model) View() string {
 	b := &strings.Builder{}
 
-	b.WriteString(headerStyle.Render("CLI Tools Dashboard"))
+	b.WriteString(headerStyle.Render("Atlas-Recon Dashboard"))
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("tab: next  enter: select/run  esc: menu  ctrl+d: details  ctrl+c: quit"))
 	b.WriteString("\n\n")

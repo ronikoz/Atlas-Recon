@@ -1,4 +1,4 @@
-# 🔍 CLI-TOOLS
+# 🔍 Atlas-Recon
 
 > **A comprehensive open-source security toolkit for network scanning, DNS reconnaissance, OSINT, and web intelligence gathering.**
 
@@ -123,7 +123,7 @@ go build -o ct ./cmd/ct
 ```bash
 # Binary works from anywhere once built
 cd /tmp
-/Users/ronikoz/CLI-TOOLS/ct scan 192.168.1.1 --ports 80,443
+/Users/ronikoz/Atlas-Recon/ct scan 192.168.1.1 --ports 80,443
 ```
 
 ---

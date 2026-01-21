@@ -39,7 +39,7 @@ def get_nasa_image(lat, lon, api_key="DEMO_KEY", date=None):
     return f"{base_url}?{encoded}"
 
 def resolve_location(query):
-    geolocator = Nominatim(user_agent="ct-cli-tools-recon")
+    geolocator = Nominatim(user_agent="atlas-recon-recon")
     try:
         location = geolocator.geocode(query)
         if location:

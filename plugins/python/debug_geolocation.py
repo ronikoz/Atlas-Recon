@@ -21,7 +21,7 @@ def debug_geocoding(query, verbose=True):
     print(f"DEBUG: Geocoding Query: {query}")
     print(f"{'='*70}\n")
     
-    geolocator = Nominatim(user_agent="ct-cli-tools-debug")
+    geolocator = Nominatim(user_agent="atlas-recon-debug")
     
     if verbose:
         print("[1] Attempting to geocode...")

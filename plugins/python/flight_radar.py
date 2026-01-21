@@ -38,7 +38,7 @@ def resolve_location(query):
     """Resolve location with accuracy assessment"""
     try:
         from geopy.geocoders import Nominatim
-        geolocator = Nominatim(user_agent="ct-cli-tools-flight")
+        geolocator = Nominatim(user_agent="atlas-recon-flight")
         location = geolocator.geocode(query, timeout=10)
         if location:
             # Assess accuracy

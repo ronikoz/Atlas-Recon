@@ -24,7 +24,7 @@ class GeoLocation:
     MAX_BBOX_SIZE = 0.1  # ~11 km acceptable range
     
     def __init__(self):
-        self.nominatim = Nominatim(user_agent="ct-cli-tools-geoloc")
+        self.nominatim = Nominatim(user_agent="atlas-recon-geoloc")
         self.results = []
     
     def geocode_nominatim(self, query: str) -> Optional[Dict]:

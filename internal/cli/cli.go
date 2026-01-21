@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"cli-tools/internal/config"
-	"cli-tools/internal/plugins"
-	"cli-tools/internal/runner"
-	"cli-tools/internal/scanner"
-	"cli-tools/internal/tui"
+	"github.com/ronikoz/atlas-recon/internal/config"
+	"github.com/ronikoz/atlas-recon/internal/plugins"
+	"github.com/ronikoz/atlas-recon/internal/runner"
+	"github.com/ronikoz/atlas-recon/internal/scanner"
+	"github.com/ronikoz/atlas-recon/internal/tui"
 )
 
 type command struct {
@@ -138,7 +138,7 @@ func commandSet() map[string]command {
 }
 
 func printUsage(cmds map[string]command) {
-	fmt.Fprintln(os.Stderr, "CLI Tools: multi-command security toolkit")
+	fmt.Fprintln(os.Stderr, "Atlas-Recon: multi-command security toolkit")
 	fmt.Fprintln(os.Stderr, "\nUsage: ct [--config path] <command> [args]")
 	fmt.Fprintln(os.Stderr, "\nCommands:")
 	order := []string{"scan", "dns", "osint", "phone", "geo", "conflict", "markets", "social", "flight", "war", "recon", "web", "report", "dashboard"}

@@ -121,7 +121,7 @@ def get_nasa_image(lat, lon, api_key="DEMO_KEY", date=None):
 
 def resolve_location(query):
     """Resolve location with improved accuracy assessment"""
-    geolocator = Nominatim(user_agent="ct-cli-tools-geo-recon")
+    geolocator = Nominatim(user_agent="atlas-recon-geo-recon")
     try:
         location = geolocator.geocode(query, timeout=10)
         if location:
@@ -221,4 +221,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

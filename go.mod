@@ -1,4 +1,4 @@
-module cli-tools
+module github.com/ronikoz/atlas-recon
 
 go 1.23.0
 

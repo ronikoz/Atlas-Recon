@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"time"
 
-	"cli-tools/internal/plugins"
+	"github.com/ronikoz/atlas-recon/internal/plugins"
 )
 
 const defaultPython = "python3"

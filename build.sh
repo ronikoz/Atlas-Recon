@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for CLI-TOOLS with embedded plugins
+# Build script for Atlas-Recon with embedded plugins
 # This script ensures Python plugins are copied to the internal directory
 # for embedding into the binary
 
@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 
-echo "🔨 Building CLI-Tools with embedded plugins..."
+echo "🔨 Building Atlas-Recon with embedded plugins..."
 
 # Step 1: Sync Python plugins from source of truth
 "$PROJECT_ROOT/scripts/sync_plugins.sh"

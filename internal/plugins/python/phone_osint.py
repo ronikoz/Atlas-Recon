@@ -51,7 +51,7 @@ def get_approx_coords(location_name):
     if not location_name:
         return None
     try:
-        geolocator = Nominatim(user_agent="ct-cli-tools-phone")
+        geolocator = Nominatim(user_agent="atlas-recon-phone")
         loc = geolocator.geocode(location_name)
         if loc:
             return {

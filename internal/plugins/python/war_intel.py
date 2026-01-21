@@ -62,7 +62,7 @@ def main():
     # Try geopy for coords
     try:
         from geopy.geocoders import Nominatim
-        geolocator = Nominatim(user_agent="ct-cli-tools-war")
+        geolocator = Nominatim(user_agent="atlas-recon-war")
         loc = geolocator.geocode(args.target)
         if loc:
             lat, lon = loc.latitude, loc.longitude

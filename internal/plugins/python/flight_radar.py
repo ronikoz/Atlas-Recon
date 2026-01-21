@@ -41,7 +41,7 @@ def resolve_location(query):
     # For simplicity, let's try to import geopy here.
     try:
         from geopy.geocoders import Nominatim
-        geolocator = Nominatim(user_agent="ct-cli-tools-flight")
+        geolocator = Nominatim(user_agent="atlas-recon-flight")
         location = geolocator.geocode(query)
         if location:
             return location.latitude, location.longitude, location.address
