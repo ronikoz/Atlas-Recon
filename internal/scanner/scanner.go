@@ -27,9 +27,10 @@ type ScanResult struct {
 
 // Scanner performs network port scans
 type Scanner struct {
-	timeout   time.Duration
-	workers   int
-	verbosity int
+	timeout     time.Duration
+	scanTimeout time.Duration // per-port TCP dial timeout
+	workers     int
+	verbosity   int
 }
 
 // NewScanner creates a new scanner with default settings
@@ -44,9 +45,10 @@ func NewScanner(timeout time.Duration, workers int) *Scanner {
 		workers = 1000
 	}
 	return &Scanner{
-		timeout:   timeout,
-		workers:   workers,
-		verbosity: 0,
+		timeout:     timeout,
+		scanTimeout: 2 * time.Second,
+		workers:     workers,
+		verbosity:   0,
 	}
 }
 
@@ -138,7 +140,7 @@ func (s *Scanner) scanPort(host string, port int) PortResult {
 	}
 
 	address := fmt.Sprintf("%s:%d", host, port)
-	conn, err := net.DialTimeout("tcp", address, s.timeout)
+	conn, err := net.DialTimeout("tcp", address, s.scanTimeout)
 	if err != nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			result.State = "filtered"

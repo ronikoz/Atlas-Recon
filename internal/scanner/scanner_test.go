@@ -3,6 +3,7 @@ package scanner
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestParsePorts(t *testing.T) {
@@ -29,6 +30,16 @@ func TestParsePorts(t *testing.T) {
 		if !tt.wantErr && !reflect.DeepEqual(got, tt.expected) {
 			t.Errorf("ParsePorts(%q) = %v, want %v", tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestNewScannerDefaults(t *testing.T) {
+	s := NewScanner(30*time.Second, 0)
+	if s.workers != 100 {
+		t.Errorf("expected 100 workers, got %d", s.workers)
+	}
+	if s.scanTimeout != 2*time.Second {
+		t.Errorf("expected 2s scan timeout, got %v", s.scanTimeout)
 	}
 }
 
