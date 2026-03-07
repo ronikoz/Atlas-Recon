@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -16,11 +17,12 @@ import (
 const defaultPython = "python3"
 
 type RunOptions struct {
-	Stream  bool
-	Python  string
-	Timeout time.Duration
-	Context context.Context
-	APIKeys map[string]string
+	Stream       bool
+	Python       string
+	Timeout      time.Duration
+	Context      context.Context
+	APIKeys      map[string]string
+	LineCallback func(line string) // when set, stdout is delivered line-by-line via callback
 }
 
 // RunPython executes a python plugin script and streams output to the console.
@@ -68,14 +70,7 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 
-	if opts.Stream {
-		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-		cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
-	} else {
-		cmd.Stdout = &stdoutBuf
-		cmd.Stderr = &stderrBuf
-	}
-	cmd.Stdin = os.Stdin
+	// Build env once, used by both paths.
 	env := append(os.Environ(), "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
 	if opts.APIKeys != nil {
 		for k, v := range opts.APIKeys {
@@ -85,6 +80,62 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 		}
 	}
 	cmd.Env = env
+
+	if opts.LineCallback != nil {
+		pr, pw, err := os.Pipe()
+		if err != nil {
+			return Result{}, fmt.Errorf("pipe error: %w", err)
+		}
+		cmd.Stdout = pw
+		cmd.Stderr = &stderrBuf
+		cmd.Stdin = os.Stdin
+
+		started := time.Now()
+		if err := cmd.Start(); err != nil {
+			pw.Close()
+			pr.Close()
+			return Result{}, fmt.Errorf("python runner start failed: %w", err)
+		}
+		pw.Close() // close write end so scanner sees EOF when process exits
+
+		scanner := bufio.NewScanner(pr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			stdoutBuf.WriteString(line + "\n")
+			opts.LineCallback(line)
+		}
+		pr.Close()
+
+		runErr := cmd.Wait()
+		finished := time.Now()
+
+		result := Result{
+			Command:    python,
+			Args:       append([]string{scriptPath}, args...),
+			StartedAt:  started,
+			FinishedAt: finished,
+			DurationMs: finished.Sub(started).Milliseconds(),
+			ExitCode:   exitCode(runErr),
+			Stdout:     stdoutBuf.String(),
+			Stderr:     stderrBuf.String(),
+		}
+		if runErr != nil {
+			result.Status = StatusFailed
+			result.Error = runErr.Error()
+			return result, fmt.Errorf("python runner failed: %w", runErr)
+		}
+		result.Status = StatusSuccess
+		return result, nil
+	}
+
+	if opts.Stream {
+		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+		cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	} else {
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+	}
+	cmd.Stdin = os.Stdin
 
 	started := time.Now()
 	err := cmd.Run()
