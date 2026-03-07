@@ -401,10 +401,10 @@ Built with Go, Python, and the following amazing libraries:
 
 ---
 
-**Status**: 🚧 In Development (v2.1.0)  
+**Status**: 🚧 In Development (v0.6.0)  
 **Last Updated**: March 7, 2026  
 **License**: MIT  
-**Made with ❤️ by the community**
+**Made with ❤️ for the community**
 
 ---
 
