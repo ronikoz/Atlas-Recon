@@ -427,11 +427,23 @@ func runResults(limit int, commandFilter string, clear bool, olderThan string) e
 		return errors.New("results storage disabled")
 	}
 	if clear {
-		fmt.Fprintln(os.Stderr, "not yet implemented (requires Task 3)")
+		n, err := resultStore.DeleteAllRecords()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stdout, "Deleted %d records.\n", n)
 		return nil
 	}
 	if olderThan != "" {
-		fmt.Fprintln(os.Stderr, "not yet implemented (requires Task 3)")
+		d, err := parseDuration(olderThan)
+		if err != nil {
+			return fmt.Errorf("invalid duration %q: %w", olderThan, err)
+		}
+		n, err := resultStore.PruneOldRecords(d)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stdout, "Pruned %d records older than %s.\n", n, olderThan)
 		return nil
 	}
 	records, err := resultStore.ListRecords(storage.ListOptions{Limit: limit, Command: commandFilter})
@@ -506,9 +518,7 @@ func initResultStore() {
 	if !cfg.Storage.Enabled || cfg.Storage.ResultsDB == "" {
 		return
 	}
-	// NOTE: storage.Open signature will be updated in Task 3 to accept maxRecords.
-	// For now, use current signature.
-	store, err := storage.Open(cfg.Storage.ResultsDB)
+	store, err := storage.Open(cfg.Storage.ResultsDB, cfg.Storage.MaxRecords)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "results store unavailable: %v\n", err)
 		return

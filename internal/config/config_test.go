@@ -13,4 +13,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Paths.Python != "python3" {
 		t.Errorf("expected python3, got %s", cfg.Paths.Python)
 	}
+	if cfg.Storage.MaxRecords != 1000 {
+		t.Errorf("expected default max_records 1000, got %d", cfg.Storage.MaxRecords)
+	}
 }

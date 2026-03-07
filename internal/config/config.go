@@ -18,14 +18,13 @@ type Config struct {
 		JSON bool `yaml:"json"`
 	} `yaml:"output"`
 	Storage struct {
-		Enabled   bool   `yaml:"enabled"`
-		ResultsDB string `yaml:"results_db"`
+		Enabled    bool   `yaml:"enabled"`
+		ResultsDB  string `yaml:"results_db"`
+		MaxRecords int    `yaml:"max_records"`
 	} `yaml:"storage"`
 	Paths struct {
-		Python   string `yaml:"python"`
-		Nmap     string `yaml:"nmap"`
-		Nslookup string `yaml:"nslookup"`
-		Whois    string `yaml:"whois"`
+		Python string `yaml:"python"`
+		Whois  string `yaml:"whois"`
 	} `yaml:"paths"`
 	APIKeys map[string]string `yaml:"apikeys"`
 }
@@ -36,9 +35,8 @@ func Default() Config {
 	cfg.Output.JSON = false
 	cfg.Storage.Enabled = true
 	cfg.Storage.ResultsDB = defaultResultsPath()
+	cfg.Storage.MaxRecords = 1000
 	cfg.Paths.Python = "python3"
-	cfg.Paths.Nmap = "nmap"
-	cfg.Paths.Nslookup = "nslookup"
 	cfg.Paths.Whois = "whois"
 	cfg.APIKeys = make(map[string]string)
 	return cfg

@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS results_started_idx ON results(started_at);
 `
 
 type Store struct {
-	db *sql.DB
+	db         *sql.DB
+	maxRecords int
 }
 
 type Record struct {
@@ -57,7 +58,7 @@ type ListOptions struct {
 	Command string
 }
 
-func Open(path string) (*Store, error) {
+func Open(path string, maxRecords int) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("results db path is empty")
 	}
@@ -72,7 +73,60 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db, maxRecords: maxRecords}
+	if maxRecords > 0 {
+		_ = s.autoPrune()
+	}
+	return s, nil
+}
+
+func (s *Store) autoPrune() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM results`).Scan(&count); err != nil {
+		return err
+	}
+	if count <= s.maxRecords {
+		return nil
+	}
+	keep := s.maxRecords * 80 / 100
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM results WHERE id NOT IN (
+            SELECT id FROM results ORDER BY started_at DESC LIMIT ?
+        )`, keep)
+	return err
+}
+
+func (s *Store) DeleteAllRecords() (int, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM results`).Scan(&count); err != nil {
+		return 0, err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM results`); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *Store) PruneOldRecords(olderThan time.Duration) (int, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("store not initialized")
+	}
+	cutoff := time.Now().UTC().Add(-olderThan).Format(time.RFC3339Nano)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := s.db.ExecContext(ctx, `DELETE FROM results WHERE started_at < ?`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func (s *Store) Close() error {
