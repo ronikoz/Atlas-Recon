@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/ronikoz/atlas-recon/internal/plugins"
@@ -19,15 +20,26 @@ type RunOptions struct {
 	Python  string
 	Timeout time.Duration
 	Context context.Context
+	APIKeys map[string]string
 }
 
 // RunPython executes a python plugin script and streams output to the console.
 // If scriptPath is a relative path, it will attempt to locate the plugin from
 // the embedded filesystem first, then fall back to the filesystem.
 func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error) {
+	// Use configured Python, or fall back to the project's venv.
+	// If the venv cannot be found or isn't created yet, fall back to default system python3.
 	python := opts.Python
 	if python == "" {
 		python = os.Getenv("CT_PYTHON")
+	}
+	if python == "" || python == defaultPython {
+		venvPython := GetVenvPython()
+		if venvPython != "" {
+			if _, err := os.Stat(venvPython); err == nil {
+				python = venvPython
+			}
+		}
 	}
 	if python == "" {
 		python = defaultPython
@@ -64,7 +76,15 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 		cmd.Stderr = &stderrBuf
 	}
 	cmd.Stdin = os.Stdin
-	cmd.Env = append(os.Environ(), "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
+	env := append(os.Environ(), "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
+	if opts.APIKeys != nil {
+		for k, v := range opts.APIKeys {
+			if v != "" {
+				env = append(env, fmt.Sprintf("CT_API_%s=%s", strings.ToUpper(k), v))
+			}
+		}
+	}
+	cmd.Env = env
 
 	started := time.Now()
 	err := cmd.Run()

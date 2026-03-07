@@ -803,6 +803,7 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 				Python:  m.cfg.Paths.Python,
 				Timeout: time.Duration(m.cfg.Timeouts.CommandSeconds) * time.Second,
 				Context: ctx,
+				APIKeys: m.cfg.APIKeys,
 			})
 			result.ID = id
 			return result, err

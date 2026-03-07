@@ -150,7 +150,8 @@ def resolve_location(query):
 def main():
     parser = argparse.ArgumentParser(description="Geospatial Reconnaissance (Improved)")
     parser.add_argument("query", help="Address, City, or Coordinates (lat,lon)")
-    parser.add_argument("--nasa-key", help="NASA API Key", default="DEMO_KEY")
+    import os
+    parser.add_argument("--nasa-key", help="NASA API Key", default=os.environ.get("CT_API_NASA", "DEMO_KEY"))
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parser.add_argument("--verify", action="store_true", help="Verify with reverse geocoding", default=True)
     args = parser.parse_args()

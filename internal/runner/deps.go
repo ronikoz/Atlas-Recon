@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -96,46 +97,75 @@ func BaseInstallers(pkg string, wingetID string, chocoPkg string) map[string][]I
 	}
 }
 
-
-// EnsurePythonPackages checks that a Python executable is available and that the
-// requested pip packages are installed. If a package is missing it prompts the
-// user and can install it using `python -m pip install`.
-func EnsurePythonPackages(packages []string, pythonExec string) error {
-	if pythonExec == "" {
-		pythonExec = os.Getenv("CT_PYTHON")
+func pythonVenvPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
 	}
-	if pythonExec == "" {
-		pythonExec = "python3"
+	return filepath.Join(home, ".cache", "ct_plugins", "env")
+}
+
+// GetVenvPython returns the path to the python executable inside the virtual environment
+func GetVenvPython() string {
+	venv := pythonVenvPath()
+	if venv == "" {
+		return ""
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Join(venv, "Scripts", "python.exe")
+	}
+	return filepath.Join(venv, "bin", "python3")
+}
+
+// EnsurePythonPackages checks that a Python executable is available, creates a virtual
+// environment if needed, and ensures the requested pip packages are installed inside it.
+func EnsurePythonPackages(packages []string, systemPython string) error {
+	if systemPython == "" {
+		systemPython = os.Getenv("CT_PYTHON")
+	}
+	if systemPython == "" {
+		systemPython = "python3"
 	}
 
-	if _, err := exec.LookPath(pythonExec); err != nil {
-		fmt.Fprintf(os.Stderr, "python not found: %s\n", pythonExec)
+	if _, err := exec.LookPath(systemPython); err != nil {
+		fmt.Fprintf(os.Stderr, "system python not found: %s\n", systemPython)
 		consent, err := promptConsent("Install Python now via system package manager?")
 		if err != nil {
 			return err
 		}
 		if !consent {
-			return fmt.Errorf("missing python executable: %s", pythonExec)
+			return fmt.Errorf("missing python executable: %s", systemPython)
 		}
 		return fmt.Errorf("please install Python and re-run")
 	}
 
+	venvPython := GetVenvPython()
+	if venvPython == "" {
+		return fmt.Errorf("could not determine venv path")
+	}
+
+	// Create venv if the python executable doesn't exist
+	if _, err := os.Stat(venvPython); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "creating python virtual environment...\n")
+		cmd := exec.Command(systemPython, "-m", "venv", pythonVenvPath())
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create virtual environment: %v", err)
+		}
+
+		// Upgrade pip inside venv quietly
+		exec.Command(venvPython, "-m", "pip", "install", "--upgrade", "pip").Run()
+	}
+
 	for _, pkg := range packages {
-		cmd := exec.Command(pythonExec, "-m", "pip", "show", pkg)
+		cmd := exec.Command(venvPython, "-m", "pip", "show", pkg)
 		if err := cmd.Run(); err == nil {
-			continue
+			continue // package already installed in venv
 		}
 
-		fmt.Fprintf(os.Stderr, "python package %s is not installed\n", pkg)
-		consent, err := promptConsent(fmt.Sprintf("Install %s with %s -m pip install %s?", pkg, pythonExec, pkg))
-		if err != nil {
-			return err
-		}
-		if !consent {
-			return fmt.Errorf("missing python package: %s", pkg)
-		}
-
-		install := exec.Command(pythonExec, "-m", "pip", "install", pkg)
+		fmt.Fprintf(os.Stderr, "installing python package: %s\n", pkg)
+		install := exec.Command(venvPython, "-m", "pip", "install", pkg)
 		install.Stdout = os.Stdout
 		install.Stderr = os.Stderr
 		install.Stdin = os.Stdin
@@ -145,6 +175,5 @@ func EnsurePythonPackages(packages []string, pythonExec string) error {
 	}
 	return nil
 }
-
 
 // Signed-off-by: ronikoz

@@ -154,6 +154,10 @@ storage:
   results_db: /path/to/db    # Defaults to OS cache dir
 paths:
   python: python3            # Python interpreter
+apikeys:                     # Inject keys securely
+  nasa: "DEMO_KEY"
+  shodan: ""
+  opensky: ""
 ```
 
 ### JSON Output Schema

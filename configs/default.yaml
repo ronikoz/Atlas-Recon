@@ -11,5 +11,9 @@ paths:
   nslookup: nslookup
   whois: whois
 
+apikeys:
+  nasa: ""
+  shodan: ""
+  opensky: ""
 
 # Signed-off-by: ronikoz

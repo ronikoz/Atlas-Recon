@@ -27,6 +27,7 @@ type Config struct {
 		Nslookup string `yaml:"nslookup"`
 		Whois    string `yaml:"whois"`
 	} `yaml:"paths"`
+	APIKeys map[string]string `yaml:"apikeys"`
 }
 
 func Default() Config {
@@ -39,6 +40,7 @@ func Default() Config {
 	cfg.Paths.Nmap = "nmap"
 	cfg.Paths.Nslookup = "nslookup"
 	cfg.Paths.Whois = "whois"
+	cfg.APIKeys = make(map[string]string)
 	return cfg
 }
 

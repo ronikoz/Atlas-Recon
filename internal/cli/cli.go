@@ -243,8 +243,9 @@ func runPluginHelper(name, plugin, usage string, args []string, pkgs []string, d
 	}
 
 	result, err := runner.RunPython(pluginPath(plugin), parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
+		Stream:  !parsed.json,
+		Python:  cfg.Paths.Python,
+		APIKeys: cfg.APIKeys,
 	})
 	result.ID = resultID(name)
 	storeCommandResult(name, parsed.args, result)
