@@ -3,6 +3,8 @@ timeouts:
   command_seconds: 120
 output:
   json: false
+storage:
+  enabled: true
 paths:
   python: python3
   nmap: nmap

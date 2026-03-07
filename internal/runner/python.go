@@ -18,6 +18,7 @@ type RunOptions struct {
 	Stream  bool
 	Python  string
 	Timeout time.Duration
+	Context context.Context
 }
 
 // RunPython executes a python plugin script and streams output to the console.
@@ -32,7 +33,7 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 		python = defaultPython
 	}
 
-	// Try to resolve plugin path (from embedded or filesystem)
+	// Try to resolve plugin path
 	resolvedPath, pluginErr := plugins.GetPluginPath(scriptPath)
 	if pluginErr == nil {
 		scriptPath = resolvedPath
@@ -42,6 +43,9 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 	}
 
 	ctx := context.Background()
+	if opts.Context != nil {
+		ctx = opts.Context
+	}
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -60,6 +64,7 @@ func RunPython(scriptPath string, args []string, opts RunOptions) (Result, error
 		cmd.Stderr = &stderrBuf
 	}
 	cmd.Stdin = os.Stdin
+	cmd.Env = append(os.Environ(), "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
 
 	started := time.Now()
 	err := cmd.Run()

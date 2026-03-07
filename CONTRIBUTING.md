@@ -8,7 +8,7 @@ Thanks for taking the time to contribute.
 - Improve documentation and examples.
 
 ## Development setup
-- Go 1.20+ recommended.
+- Go 1.24+ recommended.
 - Python 3.9+ for plugins.
 
 ## Pull request guidelines

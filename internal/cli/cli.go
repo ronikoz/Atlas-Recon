@@ -2,9 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/ronikoz/atlas-recon/internal/plugins"
 	"github.com/ronikoz/atlas-recon/internal/runner"
 	"github.com/ronikoz/atlas-recon/internal/scanner"
+	"github.com/ronikoz/atlas-recon/internal/storage"
 	"github.com/ronikoz/atlas-recon/internal/tui"
 )
 
@@ -22,6 +25,7 @@ type command struct {
 }
 
 var cfg config.Config
+var resultStore *storage.Store
 
 func Execute(argv []string) int {
 	var err error
@@ -34,6 +38,14 @@ func Execute(argv []string) int {
 		}
 		fmt.Fprintf(os.Stderr, "config load failed (%s): %v\n", displayCfg, err)
 		return 1
+	}
+	initResultStore()
+	if resultStore != nil {
+		defer func() {
+			if err := resultStore.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "results store close failed: %v\n", err)
+			}
+		}()
 	}
 
 	cmds := commandSet()
@@ -99,6 +111,11 @@ func commandSet() map[string]command {
 			description: "Launch TUI dashboard",
 			run:         runDashboard,
 		},
+		"results": {
+			name:        "results",
+			description: "List stored command results",
+			run:         runResults,
+		},
 		"phone": {
 			name:        "phone",
 			description: "Phone number OSINT",
@@ -141,7 +158,7 @@ func printUsage(cmds map[string]command) {
 	fmt.Fprintln(os.Stderr, "Atlas-Recon: multi-command security toolkit")
 	fmt.Fprintln(os.Stderr, "\nUsage: ct [--config path] <command> [args]")
 	fmt.Fprintln(os.Stderr, "\nCommands:")
-	order := []string{"scan", "dns", "osint", "phone", "geo", "conflict", "markets", "social", "flight", "war", "recon", "web", "report", "dashboard"}
+	order := []string{"scan", "dns", "osint", "phone", "geo", "conflict", "markets", "social", "flight", "war", "recon", "web", "report", "results", "dashboard"}
 	for _, name := range order {
 		if cmd, ok := cmds[name]; ok {
 			fmt.Fprintf(os.Stderr, "  %-10s %s\n", cmd.name, cmd.description)
@@ -179,6 +196,7 @@ func runScan(args []string) error {
 	timeout := time.Duration(cfg.Timeouts.CommandSeconds) * time.Second
 	s := scanner.NewScanner(timeout, cfg.Concurrency)
 	result := s.ScanHost(target, ports)
+	storeScanResult(parsed.args, result)
 
 	if parsed.json {
 		jsonOutput, _ := json.MarshalIndent(result, "", "  ")
@@ -206,280 +224,168 @@ func runScan(args []string) error {
 	return nil
 }
 
-func runDNS(args []string) error {
+func runPluginHelper(name, plugin, usage string, args []string, pkgs []string, deps []runner.Dependency) error {
 	parsed := parseArgs(args)
 	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct dns <domain> [--json]")
+		fmt.Fprintln(os.Stderr, usage)
 		return nil
 	}
 
-	if err := runner.EnsureDependencies([]runner.Dependency{nslookupDependency()}); err != nil {
-		return err
+	if len(pkgs) > 0 {
+		if err := runner.EnsurePythonPackages(pkgs, cfg.Paths.Python); err != nil {
+			return err
+		}
+	}
+	if len(deps) > 0 {
+		if err := runner.EnsureDependencies(deps); err != nil {
+			return err
+		}
 	}
 
-	script := pluginPath("dns_lookup.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
+	result, err := runner.RunPython(pluginPath(plugin), parsed.args, runner.RunOptions{
 		Stream: !parsed.json,
 		Python: cfg.Paths.Python,
 	})
-	result.ID = resultID("dns")
+	result.ID = resultID(name)
+	storeCommandResult(name, parsed.args, result)
 	if parsed.json {
 		return emitJSON(result, err)
 	}
 	return err
+}
+
+func runDNS(args []string) error {
+	return runPluginHelper("dns", "dns_lookup.py", "usage: ct dns <domain> [--json]", args, nil, []runner.Dependency{nslookupDependency()})
 }
 
 func runOSINT(args []string) error {
 	parsed := parseArgs(args)
 	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct osint <domain> [--json]")
-		fmt.Fprintln(os.Stderr, "   or: ct osint --category <name> [--source <name>] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: ct osint <domain> [--json]\n   or: ct osint --category <name> [--source <name>] [--json]")
 		return nil
 	}
 
 	useSuite := hasAnyFlag(parsed.args, []string{"--category", "--source", "--list", "--suite"})
-	var pyPkgs []string
-	var script string
+	pkgs := []string{"requests", "python-whois", "python-dateutil", "dnspython", "colorama"}
+	script := "osint_domain.py"
 	if useSuite {
-		pyPkgs = []string{"requests"}
-		script = pluginPath("osint_suite.py")
-	} else {
-		// Ensure Python and required pip packages for the OSINT domain plugin
-		pyPkgs = []string{"requests", "python-whois", "python-dateutil", "dnspython", "colorama"}
-		script = pluginPath("osint_domain.py")
-	}
-	if err := runner.EnsurePythonPackages(pyPkgs, cfg.Paths.Python); err != nil {
-		return err
+		pkgs = []string{"requests"}
+		script = "osint_suite.py"
 	}
 
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("osint")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	// Temporarily construct the args so it bypasses runPluginHelper's help check
+	// because the helper uses the same `parseArgs`, but since we already parsed it, we pass original args
+	return runPluginHelper("osint", script, "usage: ct osint <domain> [--json]", args, pkgs, nil)
 }
 
 func runRecon(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct recon <domain> [--json]")
-		return nil
-	}
-
-	script := pluginPath("recon_subdomains.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("recon")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("recon", "recon_subdomains.py", "usage: ct recon <domain> [--json]", args, nil, nil)
 }
 
 func runWeb(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct web <url> [--json]")
-		return nil
-	}
-
-	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-
-	script := pluginPath("web_check.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("web")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("web", "web_check.py", "usage: ct web <url> [--json]", args, []string{"requests"}, nil)
 }
 
 func runReport(args []string) error {
-	parsed := parseArgs(args)
-	// Report doesn't strictly need a target, but often takes files.
-	// If no args, show help
-	if len(parsed.args) == 0 && !hasAnyFlag(parsed.args, []string{"--title", "--output"}) {
-		fmt.Fprintln(os.Stderr, "usage: ct report [files...] [--title <text>] [--output <file>]")
-		return nil
-	}
-
-	script := pluginPath("generate_report.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("report")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("report", "generate_report.py", "usage: ct report [files...] [--title <text>] [--output <file>]", args, nil, nil)
 }
 
 func runPhone(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct phone <number> [--json]")
-		return nil
-	}
-
-	if err := runner.EnsurePythonPackages([]string{"phonenumbers"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-
-	script := pluginPath("phone_osint.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("phone")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("phone", "phone_osint.py", "usage: ct phone <number> [--json]", args, []string{"phonenumbers"}, nil)
 }
 
 func runGeo(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct geo <query> [--json]")
-		return nil
-	}
-
-	if err := runner.EnsurePythonPackages([]string{"geopy"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-
-	script := pluginPath("geo_recon.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("geo")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("geo", "geo_recon.py", "usage: ct geo <query> [--json]", args, []string{"geopy"}, nil)
 }
 
 func runConflict(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct conflict <query> [--json]")
-		return nil
-	}
-	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-	script := pluginPath("conflict_view.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("conflict")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("conflict", "conflict_view.py", "usage: ct conflict <query> [--json]", args, []string{"requests"}, nil)
 }
 
 func runMarkets(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct markets <query> [--json]")
-		return nil
-	}
-	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-	script := pluginPath("market_sentiment.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("markets")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("markets", "market_sentiment.py", "usage: ct markets <query> [--json]", args, []string{"requests"}, nil)
 }
 
 func runSocial(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct social <query> [--json]")
-		return nil
-	}
-	// atproto requires requests too, but let's check basic requests first as it is used in the plugin manually
-	if err := runner.EnsurePythonPackages([]string{"requests"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-	script := pluginPath("social_pulse.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("social")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("social", "social_pulse.py", "usage: ct social <query> [--json]", args, []string{"requests"}, nil)
 }
 
 func runFlight(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct flight <target> [--radius km] [--json]")
-		return nil
-	}
-	if err := runner.EnsurePythonPackages([]string{"requests", "geopy"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-	script := pluginPath("flight_radar.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("flight")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("flight", "flight_radar.py", "usage: ct flight <target> [--radius km] [--json]", args, []string{"requests", "geopy"}, nil)
 }
 
 func runWar(args []string) error {
-	parsed := parseArgs(args)
-	if len(parsed.args) == 0 || isHelp(parsed.args) {
-		fmt.Fprintln(os.Stderr, "usage: ct war <target> [--json]")
-		return nil
-	}
-	if err := runner.EnsurePythonPackages([]string{"requests", "geopy"}, cfg.Paths.Python); err != nil {
-		return err
-	}
-	script := pluginPath("war_intel.py")
-	result, err := runner.RunPython(script, parsed.args, runner.RunOptions{
-		Stream: !parsed.json,
-		Python: cfg.Paths.Python,
-	})
-	result.ID = resultID("war")
-	if parsed.json {
-		return emitJSON(result, err)
-	}
-	return err
+	return runPluginHelper("war", "war_intel.py", "usage: ct war <target> [--json]", args, []string{"requests", "geopy"}, nil)
 }
 
 func runDashboard(args []string) error {
 	return tui.Run(cfg)
+}
+
+func runResults(args []string) error {
+	parsed := parseArgs(args)
+	if isHelp(parsed.args) {
+		fmt.Fprintln(os.Stderr, "usage: ct results [--limit N] [--command name] [--json]")
+		return nil
+	}
+	if resultStore == nil {
+		return errors.New("results storage disabled")
+	}
+	limit := 20
+	commandFilter := ""
+	for i := 0; i < len(parsed.args); i++ {
+		arg := parsed.args[i]
+		if arg == "--limit" && i+1 < len(parsed.args) {
+			value, err := strconv.Atoi(parsed.args[i+1])
+			if err != nil {
+				return fmt.Errorf("invalid --limit value: %v", err)
+			}
+			limit = value
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--limit=") {
+			value, err := strconv.Atoi(strings.TrimPrefix(arg, "--limit="))
+			if err != nil {
+				return fmt.Errorf("invalid --limit value: %v", err)
+			}
+			limit = value
+			continue
+		}
+		if arg == "--command" && i+1 < len(parsed.args) {
+			commandFilter = parsed.args[i+1]
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--command=") {
+			commandFilter = strings.TrimPrefix(arg, "--command=")
+			continue
+		}
+	}
+
+	records, err := resultStore.ListRecords(storage.ListOptions{Limit: limit, Command: commandFilter})
+	if err != nil {
+		return err
+	}
+	if parsed.json {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(records)
+	}
+	if len(records) == 0 {
+		fmt.Fprintln(os.Stdout, "No stored results found.")
+		return nil
+	}
+	for _, record := range records {
+		fmt.Fprintf(os.Stdout, "%s  %-8s %-7s %6dms  %s\n",
+			record.StartedAt.Format(time.RFC3339),
+			record.Command,
+			record.Status,
+			record.DurationMs,
+			record.ID,
+		)
+	}
+	return nil
 }
 
 func pluginPath(name string) string {
@@ -542,6 +448,77 @@ func emitJSON(result runner.Result, runErr error) error {
 	return runErr
 }
 
+func initResultStore() {
+	if !cfg.Storage.Enabled || cfg.Storage.ResultsDB == "" {
+		return
+	}
+	store, err := storage.Open(cfg.Storage.ResultsDB)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "results store unavailable: %v\n", err)
+		return
+	}
+	resultStore = store
+}
+
+func storeCommandResult(command string, args []string, result runner.Result) {
+	if resultStore == nil {
+		return
+	}
+	record := storage.Record{
+		ID:         result.ID,
+		Kind:       "command",
+		Command:    command,
+		Args:       args,
+		StartedAt:  result.StartedAt,
+		FinishedAt: result.FinishedAt,
+		DurationMs: result.DurationMs,
+		ExitCode:   result.ExitCode,
+		Status:     string(result.Status),
+		Stdout:     result.Stdout,
+		Stderr:     result.Stderr,
+		Error:      result.Error,
+		Payload:    "",
+	}
+	if err := resultStore.SaveRecord(record); err != nil {
+		fmt.Fprintf(os.Stderr, "results store failed: %v\n", err)
+	}
+}
+
+func storeScanResult(args []string, result *scanner.ScanResult) {
+	if resultStore == nil || result == nil {
+		return
+	}
+	payload, err := json.Marshal(result)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "results store failed: %v\n", err)
+		return
+	}
+	status := string(runner.StatusSuccess)
+	exitCode := 0
+	if result.Error != "" {
+		status = string(runner.StatusFailed)
+		exitCode = 1
+	}
+	record := storage.Record{
+		ID:         resultID("scan"),
+		Kind:       "scan",
+		Command:    "scan",
+		Args:       args,
+		StartedAt:  result.StartTime,
+		FinishedAt: result.EndTime,
+		DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+		ExitCode:   exitCode,
+		Status:     status,
+		Stdout:     "",
+		Stderr:     "",
+		Error:      result.Error,
+		Payload:    string(payload),
+	}
+	if err := resultStore.SaveRecord(record); err != nil {
+		fmt.Fprintf(os.Stderr, "results store failed: %v\n", err)
+	}
+}
+
 func resultID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
 }
@@ -560,15 +537,6 @@ func extractConfigPath(argv []string) (string, []string) {
 		filtered = append(filtered, argv[i])
 	}
 	return cfgPath, filtered
-}
-
-func nmapDependency() runner.Dependency {
-	return runner.Dependency{
-		Name:        "nmap",
-		CheckCmd:    "nmap",
-		Description: "port scanner",
-		Installers:  runner.BaseInstallers("nmap", "Nmap.Nmap", "nmap"),
-	}
 }
 
 func nslookupDependency() runner.Dependency {
@@ -590,15 +558,6 @@ func nslookupDependency() runner.Dependency {
 				{Name: "choco", Command: []string{"choco", "install", "-y", "bind"}},
 			},
 		},
-	}
-}
-
-func whoisDependency() runner.Dependency {
-	return runner.Dependency{
-		Name:        "whois",
-		CheckCmd:    "whois",
-		Description: "WHOIS client",
-		Installers:  runner.BaseInstallers("whois", "Sysinternals.Whois", "whois"),
 	}
 }
 

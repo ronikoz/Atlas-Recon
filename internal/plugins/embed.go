@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -70,7 +71,15 @@ func extractPlugin(name string) (string, error) {
 
 	// Write to cache
 	cachePath := filepath.Join(cacheDir, safeName)
-	if err := os.WriteFile(cachePath, data, 0755); err != nil {
+
+	// Check if already extracted and up-to-date
+	if existingData, err := os.ReadFile(cachePath); err == nil {
+		if bytes.Equal(data, existingData) {
+			return cachePath, nil
+		}
+	}
+
+	if err := os.WriteFile(cachePath, data, 0700); err != nil {
 		return "", fmt.Errorf("failed to extract plugin: %w", err)
 	}
 

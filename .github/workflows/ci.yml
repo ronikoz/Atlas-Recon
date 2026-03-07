@@ -1,0 +1,41 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests dnspython colorama python-whois python-dateutil geopy phonenumbers
+        
+    - name: Run Build Script (embeds plugins)
+      run: ./build.sh
+      
+    - name: Run Go Tests
+      run: go test -v ./...
+      
+    - name: Run Python Tests
+      run: |
+        pip install pytest
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/plugins/python
+        pytest tests/

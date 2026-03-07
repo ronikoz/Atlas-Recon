@@ -11,11 +11,12 @@ import (
 	"github.com/ronikoz/atlas-recon/internal/plugins"
 	"github.com/ronikoz/atlas-recon/internal/runner"
 
-	"github.com/google/shlex"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/google/shlex"
 )
 
 type commandDef struct {
@@ -34,6 +35,7 @@ type uiJob struct {
 	Title  string
 	Status string
 	Result runner.Result
+	Cancel context.CancelFunc
 }
 
 type resultMsg struct {
@@ -44,11 +46,14 @@ type resultsClosedMsg struct{}
 
 type model struct {
 	cfg           config.Config
+	allCommands   []commandDef
 	commands      []commandDef
 	menuIndex     int
 	focusIndex    int
 	targetInput   textinput.Model
 	argsInput     textinput.Model
+	filterInput   textinput.Model
+	isFiltering   bool
 	jobs          []uiJob
 	jobCursor     int
 	showDetails   bool
@@ -58,6 +63,10 @@ type model struct {
 	statusMessage string
 	viewport      viewport.Model
 	ready         bool
+	spinner       spinner.Model
+	showHelp      bool
+	width         int
+	height        int
 }
 
 var (
@@ -68,6 +77,7 @@ var (
 	statusOK     = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
 	statusFail   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	borderStyle  = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("238")).PaddingLeft(2)
 )
 
 func Run(cfg config.Config) error {
@@ -207,6 +217,29 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 		},
 	}
 
+	// Add dynamically found plugins
+	foundPlugins, _ := plugins.ListPlugins()
+	for _, p := range foundPlugins {
+		exists := false
+		for _, c := range commands {
+			if c.Script == p {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			name := strings.TrimSuffix(p, ".py")
+			commands = append(commands, commandDef{
+				Name:           name,
+				Description:    "Dynamically loaded script",
+				Script:         p,
+				RequiresTarget: true,
+				TargetHint:     "target",
+				ArgsHint:       "--help",
+			})
+		}
+	}
+
 	target := textinput.New()
 	target.Placeholder = commands[0].TargetHint
 	target.Prompt = "Target: "
@@ -219,24 +252,38 @@ func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) mod
 	args.CharLimit = 512
 	args.Width = 60
 
+	filter := textinput.New()
+	filter.Placeholder = "Filter commands..."
+	filter.Prompt = "/ "
+	filter.Width = 30
+
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return model{
 		cfg:         cfg,
+		allCommands: commands,
 		commands:    commands,
 		menuIndex:   0,
 		focusIndex:  0,
 		targetInput: target,
 		argsInput:   args,
+		filterInput: filter,
 		jobs:        []uiJob{},
 		jobCursor:   0,
 		showDetails: true,
 		queue:       q,
 		results:     q.Results(),
 		cancel:      cancel,
+		spinner:     s,
+		width:       80,
+		height:      24,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return waitForResult(m.results)
+	return tea.Batch(waitForResult(m.results), m.spinner.Tick)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -255,30 +302,66 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cleanup()
 		return m, tea.Quit
 
+	case spinner.TickMsg:
+		var sCmd tea.Cmd
+		m.spinner, sCmd = m.spinner.Update(msg)
+		cmds = append(cmds, sCmd)
+
 	case tea.WindowSizeMsg:
-		// Calculate fixed height of UI components
-		// Header (4) + Commands (8) + Inputs (5) + Jobs (4) + Status (2) = ~23 lines
-		const fixedHeight = 24
-		vpHeight := msg.Height - fixedHeight
+		m.width = msg.Width
+		m.height = msg.Height
+
+		vpWidth := msg.Width
+		if msg.Width > 100 {
+			vpWidth = msg.Width - (msg.Width * 45 / 100) - 4
+		}
+
+		vpHeight := msg.Height - 24
+		if msg.Width > 100 {
+			vpHeight = msg.Height - 6 // Header + Footer
+		}
 		if vpHeight < 5 {
-			vpHeight = 5 // Minimum usable height
+			vpHeight = 5
 		}
 
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, vpHeight)
+			m.viewport = viewport.New(vpWidth, vpHeight)
 			m.ready = true
 		} else {
-			m.viewport.Width = msg.Width
+			m.viewport.Width = vpWidth
 			m.viewport.Height = vpHeight
 		}
-		// Also update viewport with current job content on resize
 		m.updateViewportContent()
 
 	case tea.KeyMsg:
+		if m.isFiltering {
+			switch msg.String() {
+			case "enter", "esc":
+				m.isFiltering = false
+				m.filterInput.Blur()
+				return m, nil
+			}
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			cmds = append(cmds, cmd)
+			m.filterCommands()
+			return m, tea.Batch(cmds...)
+		}
+
 		switch msg.String() {
 		case "ctrl+c":
 			m.cleanup()
 			return m, tea.Quit
+		case "?":
+			if m.focusIndex == 0 || m.focusIndex == 3 {
+				m.showHelp = !m.showHelp
+				return m, nil
+			}
+		case "/":
+			if m.focusIndex == 0 {
+				m.isFiltering = true
+				m.filterInput.Focus()
+				return m, nil
+			}
 		case "tab":
 			m.focusNext()
 			return m, nil
@@ -294,7 +377,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+d":
 			m.showDetails = !m.showDetails
 			return m, nil
+		case "ctrl+x":
+			if m.focusIndex == 3 && len(m.jobs) > 0 {
+				job := m.jobs[m.jobCursor]
+				if job.Status == "running" && job.Cancel != nil {
+					job.Cancel()
+					m.jobs[m.jobCursor].Status = string(runner.StatusFailed)
+					// uiJob doesn't have an Output string, use Result.Stderr
+					m.jobs[m.jobCursor].Result.Stderr = "Job cancelled by user\n"
+					m.statusMessage = "Cancelled job: " + job.Title
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
 		case "esc":
+			if m.showHelp {
+				m.showHelp = false
+				return m, nil
+			}
 			m.focusIndex = 0
 			return m, nil
 		case "up", "k":
@@ -368,26 +468,48 @@ func (m *model) updateViewportContent() {
 }
 
 func (m model) View() string {
-	b := &strings.Builder{}
+	if m.showHelp {
+		return m.renderHelp()
+	}
 
+	b := &strings.Builder{}
 	b.WriteString(headerStyle.Render("Atlas-Recon Dashboard"))
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("tab: next  enter: select/run  esc: menu  ctrl+d: details  ctrl+c: quit"))
+	b.WriteString(helpStyle.Render("tab: next  enter: select/run  esc: menu  ctrl+d: details  ?: help  ctrl+c: quit"))
 	b.WriteString("\n\n")
 
-	b.WriteString(m.renderCommands())
-	b.WriteString("\n")
-	b.WriteString(m.renderInputs())
-	b.WriteString("\n")
-	b.WriteString(m.renderJobs())
+	leftStr := &strings.Builder{}
+	leftStr.WriteString(m.renderCommands())
+	leftStr.WriteString("\n")
+	leftStr.WriteString(m.renderInputs())
+	leftStr.WriteString("\n")
+	leftStr.WriteString(m.renderJobs())
 
-	if m.showDetails {
-		b.WriteString("\n")
-		// Use viewport view
-		if !m.ready {
-			b.WriteString("\n  Initializing...\n")
-		} else {
-			b.WriteString(m.viewport.View())
+	if m.width > 100 {
+		// Side-by-side layout
+		leftPaneWidth := m.width * 45 / 100
+		leftPane := lipgloss.NewStyle().Width(leftPaneWidth).Render(leftStr.String())
+
+		rightPane := ""
+		if m.showDetails {
+			if !m.ready {
+				rightPane = borderStyle.Render("\n  Initializing...\n")
+			} else {
+				rightPane = borderStyle.Render(m.viewport.View())
+			}
+		}
+
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane))
+	} else {
+		// Stacked layout
+		b.WriteString(leftStr.String())
+		if m.showDetails {
+			b.WriteString("\n")
+			if !m.ready {
+				b.WriteString("\n  Initializing...\n")
+			} else {
+				b.WriteString(m.viewport.View())
+			}
 		}
 	}
 
@@ -396,6 +518,25 @@ func (m model) View() string {
 		b.WriteString(helpStyle.Render(m.statusMessage))
 	}
 
+	return b.String()
+}
+
+func (m model) renderHelp() string {
+	b := &strings.Builder{}
+	b.WriteString(headerStyle.Render("Atlas-Recon Help Session"))
+	b.WriteString("\n\n")
+	b.WriteString("Navigation:\n")
+	b.WriteString("  tab / shift+tab   Move focus between panels (Menu -> Target -> Args -> Jobs)\n")
+	b.WriteString("  up/down, j/k      Navigate selected panel (Commands, Args Options, Jobs)\n")
+	b.WriteString("  /                 Filter commands (when in menu panel)\n")
+	b.WriteString("  enter             Run selected command or focus next input\n")
+	b.WriteString("  ctrl+d            Toggle output details panel\n")
+	b.WriteString("  ?                 Toggle this help screen\n")
+	b.WriteString("  q / ctrl+c        Quit application\n")
+	b.WriteString("\n")
+	b.WriteString("Job Management:\n")
+	b.WriteString("  ctrl+x            Cancel selected running job\n")
+	b.WriteString("\nPress ? or esc to return.")
 	return b.String()
 }
 
@@ -408,12 +549,41 @@ func (m *model) cleanup() {
 	}
 }
 
+func (m *model) filterCommands() {
+	query := strings.ToLower(m.filterInput.Value())
+	if query == "" {
+		m.commands = m.allCommands
+	} else {
+		filtered := []commandDef{}
+		for _, c := range m.allCommands {
+			if strings.Contains(strings.ToLower(c.Name), query) || strings.Contains(strings.ToLower(c.Description), query) {
+				filtered = append(filtered, c)
+			}
+		}
+		m.commands = filtered
+	}
+	if m.menuIndex >= len(m.commands) {
+		m.menuIndex = len(m.commands) - 1
+		if m.menuIndex < 0 {
+			m.menuIndex = 0
+		}
+	}
+}
+
 func (m model) renderCommands() string {
 	b := &strings.Builder{}
 	b.WriteString("Commands:\n")
 
+	if m.isFiltering {
+		b.WriteString(m.filterInput.View() + "\n")
+	} else if m.focusIndex == 0 {
+		b.WriteString(helpStyle.Render("press '/' to filter") + "\n")
+	} else {
+		b.WriteString("\n")
+	}
+
 	if len(m.commands) == 0 {
-		b.WriteString("  (no commands available)\n")
+		b.WriteString("  (no commands match)\n")
 		return b.String()
 	}
 
@@ -520,6 +690,9 @@ func (m model) renderJobs() string {
 			}
 		}
 		status := m.formatStatus(job.Status)
+		if job.Status == "running" {
+			status = m.spinner.View() + " " + status
+		}
 		line := fmt.Sprintf("%s [%s] %s", cursor, status, truncate(job.Title, 50))
 		b.WriteString(line + "\n")
 	}
@@ -616,18 +789,20 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 	if target != "" {
 		jobTitle += " " + target
 	}
-	job := uiJob{ID: id, Title: jobTitle, Status: "running"}
+	ctx, cancel := context.WithCancel(context.Background())
+	job := uiJob{ID: id, Title: jobTitle, Status: "running", Cancel: cancel}
 
 	script := pluginPath(cmdDef.Script)
 	if err := m.queue.Submit(runner.Job{
 		ID:      id,
 		Command: cmdDef.Name,
 		Args:    argList,
-		Run: func(ctx context.Context) (runner.Result, error) {
+		Run: func(_ context.Context) (runner.Result, error) {
 			result, err := runner.RunPython(script, argList, runner.RunOptions{
-				Stream: false,
-				Python: m.cfg.Paths.Python,
+				Stream:  false,
+				Python:  m.cfg.Paths.Python,
 				Timeout: time.Duration(m.cfg.Timeouts.CommandSeconds) * time.Second,
+				Context: ctx,
 			})
 			result.ID = id
 			return result, err
@@ -750,22 +925,6 @@ func clamp(val int, min int, max int) int {
 		return max
 	}
 	return val
-}
-
-func tailLines(text string, maxLines int) string {
-	lines := strings.Split(text, "\n")
-	if len(lines) <= maxLines {
-		return strings.Join(lines, "\n")
-	}
-	return strings.Join(lines[len(lines)-maxLines:], "\n")
-}
-
-func indent(text string, prefix string) string {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		lines[i] = prefix + line
-	}
-	return strings.Join(lines, "\n")
 }
 
 func truncate(text string, limit int) string {

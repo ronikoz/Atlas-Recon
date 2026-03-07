@@ -3,7 +3,7 @@
 > **A comprehensive open-source security toolkit for network scanning, DNS reconnaissance, OSINT, and web intelligence gathering.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.16+-blue)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-blue)](https://golang.org/)
 [![Python Version](https://img.shields.io/badge/Python-3.9+-green)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]()
 
@@ -34,7 +34,7 @@
 
 | Aspect | Status |
 |--------|--------|
-| **Version** | 1.1.0 |
+| **Version** | 2.1.0 |
 | **Build** | ✅ All bugs fixed, 15 plugins embedded, fully tested |
 | **Go Binary** | ✅ Complete, optimized, cross-platform |
 | **Plugin System** | ✅ Fully embedded with caching |
@@ -80,7 +80,7 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Go 1.16+** (to build)
+- **Go 1.24+** (to build)
 - **Python 3.9+** (for plugins)
 - **macOS/Linux** or Unix-like environment
 
@@ -107,9 +107,9 @@ go build -o ct ./cmd/ct
 ./ct dns google.com
 
 # OSINT gathering
-./ct osint domain example.com
-./ct osint geo "Paris, France"
-./ct osint flight "London"
+./ct osint example.com
+./ct geo "Paris, France"
+./ct flight "London"
 
 # Run interactive dashboard
 ./ct dashboard
@@ -117,6 +117,10 @@ go build -o ct ./cmd/ct
 # JSON output for automation
 ./ct scan localhost --ports 80,443 --json
 ./ct osint geo "Tokyo" --json
+
+# Review stored results
+./ct results --limit 10
+./ct results --command dns --json
 ```
 
 ### Run from Any Directory
@@ -145,6 +149,9 @@ timeouts:
   command_seconds: 30        # Max runtime per command
 output:
   json: false                # Default output format
+storage:
+  enabled: true              # Store results in SQLite
+  results_db: /path/to/db    # Defaults to OS cache dir
 paths:
   python: python3            # Python interpreter
 ```
@@ -205,8 +212,8 @@ All commands support `--json` for structured output:
 1. Create `plugins/python/your_plugin.py`
 2. Implement argument parsing and main logic
 3. Return JSON or human-readable output
-4. Test: `python3 plugins/python/your_plugin.py --help`
-5. Rebuild: `go build -o ct ./cmd/ct`
+4. Rebuild: `go build -o ct ./cmd/ct`
+5. *That's it!* The new module is now automatically available in the CLI and the TUI dashboard (via dynamic discovery). Use the `/` hotkey in the TUI to search for it.
 
 ---
 
@@ -233,16 +240,12 @@ cmd/ct/main.go              → CLI entry point
 ├── internal/plugins/       → Plugin embedding & resolution
 ├── internal/runner/        → Job queue & execution engine
 ├── internal/tui/           → Terminal UI dashboard
-└── internal/result/        → Result formatting & output
+└── internal/storage/       → SQLite status formatting & output
 ```
 
 ### Python Plugins
-```
-plugins/python/             → All 15 embedded plugins
-├── network/                → Scanning tools
-├── osint/                  → Intelligence gathering
-├── geospatial/            → Location-based tools
-└── intelligence/          → Analysis & reporting
+```text
+plugins/python/             → All 15 embedded plugins (flat structure)
 ```
 
 ### Key Technologies
@@ -262,13 +265,13 @@ plugins/python/             → All 15 embedded plugins
 - [x] Configuration system
 - [x] JSON output schema
 - [x] Plugin caching
+- [x] Persistent result database (SQLite)
 - [x] Error handling & timeouts
 - [x] Cross-directory execution
 - [x] Performance optimization
 
 ### 🔄 In Development / Planned
 - [ ] Web API interface (REST endpoints)
-- [ ] Persistent result database (SQLite)
 - [ ] Advanced filtering and searching
 - [ ] Scheduled/recurring scans
 - [ ] Multi-target batch processing
@@ -398,8 +401,8 @@ Built with Go, Python, and the following amazing libraries:
 
 ---
 
-**Status**: 🚧 In Development (v1.1.0)  
-**Last Updated**: January 21, 2026  
+**Status**: 🚧 In Development (v2.1.0)  
+**Last Updated**: March 7, 2026  
 **License**: MIT  
 **Made with ❤️ by the community**
 

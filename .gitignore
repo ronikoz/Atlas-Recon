@@ -2,3 +2,6 @@ ct
 __pycache__/
 *.pyc
 .DS_Store
+internal/plugins/python/
+*.db
+results.db

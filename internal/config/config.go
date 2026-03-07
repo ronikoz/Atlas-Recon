@@ -17,6 +17,10 @@ type Config struct {
 	Output struct {
 		JSON bool `yaml:"json"`
 	} `yaml:"output"`
+	Storage struct {
+		Enabled   bool   `yaml:"enabled"`
+		ResultsDB string `yaml:"results_db"`
+	} `yaml:"storage"`
 	Paths struct {
 		Python   string `yaml:"python"`
 		Nmap     string `yaml:"nmap"`
@@ -29,11 +33,21 @@ func Default() Config {
 	cfg := Config{Concurrency: 4}
 	cfg.Timeouts.CommandSeconds = 120
 	cfg.Output.JSON = false
+	cfg.Storage.Enabled = true
+	cfg.Storage.ResultsDB = defaultResultsPath()
 	cfg.Paths.Python = "python3"
 	cfg.Paths.Nmap = "nmap"
 	cfg.Paths.Nslookup = "nslookup"
 	cfg.Paths.Whois = "whois"
 	return cfg
+}
+
+func defaultResultsPath() string {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil || cacheDir == "" {
+		return "results.db"
+	}
+	return filepath.Join(cacheDir, "atlas-recon", "results.db")
 }
 
 func Load(path string) (Config, error) {
@@ -75,6 +89,5 @@ func resolvePath(path string) (string, error) {
 	}
 	return "", nil
 }
-
 
 // Signed-off-by: ronikoz

@@ -54,7 +54,8 @@ def main():
 
     try:
         print(" ".join(cmd))
-        return subprocess.call(cmd)
+        result = subprocess.run(cmd)
+        return result.returncode
     except FileNotFoundError:
         print("nmap not found in PATH", file=sys.stderr)
         return 127
