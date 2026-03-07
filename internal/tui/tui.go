@@ -93,9 +93,11 @@ func Run(cfg config.Config) error {
 
 func newModel(cfg config.Config, q *runner.Queue, cancel context.CancelFunc) model {
 	commands := []commandDef{
+		// Note: TUI scan runs the embedded scan_nmap.py plugin.
+		// The native Go scanner is only available via the CLI (ct scan).
 		{
 			Name:           "scan",
-			Description:    "Run nmap service scan via scan_nmap.py",
+			Description:    "TCP port scan (embedded plugin)",
 			Script:         "scan_nmap.py",
 			RequiresTarget: true,
 			TargetHint:     "example.com",
