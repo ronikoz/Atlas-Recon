@@ -109,12 +109,12 @@ func dnsCmd() *cobra.Command {
 
 func osintCmd() *cobra.Command {
 	var targetsFile string
+	var useSuite bool
 	cmd := &cobra.Command{
 		Use:   "osint <domain>",
 		Short: "Run OSINT tasks and data enrichment",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			useSuite := hasAnyFlag(args, []string{"--category", "--source", "--list", "--suite"})
 			pkgs := []string{"requests", "python-whois", "python-dateutil", "dnspython", "colorama"}
 			script := "osint_domain.py"
 			if useSuite {
@@ -125,6 +125,7 @@ func osintCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&targetsFile, "targets-file", "", "file with one target per line")
+	cmd.Flags().BoolVar(&useSuite, "suite", false, "use multi-source OSINT suite instead of domain-specific")
 	return cmd
 }
 
@@ -364,6 +365,7 @@ func runPluginHelper(name, plugin, usage string, args []string, pkgs []string, d
 	}
 	// Multi-target
 	var results []runner.Result
+	hadError := false
 	for _, targetArgs := range targets {
 		if !cfg.Output.JSON {
 			fmt.Printf("\n--- target: %s ---\n", targetArgs[0])
@@ -375,15 +377,21 @@ func runPluginHelper(name, plugin, usage string, args []string, pkgs []string, d
 		})
 		result.ID = resultID(name)
 		storeCommandResult(name, targetArgs, result)
-		if err != nil && !cfg.Output.JSON {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		if err != nil {
+			hadError = true
+			if !cfg.Output.JSON {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			}
 		}
 		results = append(results, result)
 	}
 	if cfg.Output.JSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(results)
+		_ = enc.Encode(results)
+	}
+	if hadError {
+		return fmt.Errorf("one or more targets failed")
 	}
 	return nil
 }
