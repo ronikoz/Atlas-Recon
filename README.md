@@ -48,7 +48,7 @@
 ### ⚡ Go CLI Engine
 - **14+ powerful subcommands** for various security tasks
 - **Native port scanner** - TCP connectivity scanning with worker pool concurrency
-- **Interactive TUI dashboard** using Bubble Tea framework
+- **Interactive TUI dashboard** using Bubble Tea framework with real-time log streaming
 - **15 embedded Python plugins** - all bundled in the binary
 - **Job queue system** with goroutine-based concurrency
 - **Plugin caching** for instant subsequent runs
