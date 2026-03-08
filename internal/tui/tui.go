@@ -36,6 +36,7 @@ type uiJob struct {
 	Status string
 	Result runner.Result
 	Cancel context.CancelFunc
+	Lines  []string // streamed output lines accumulated during run
 }
 
 type resultMsg struct {
@@ -43,6 +44,11 @@ type resultMsg struct {
 }
 
 type resultsClosedMsg struct{}
+
+type streamLineMsg struct {
+	id   string
+	line string
+}
 
 type model struct {
 	cfg           config.Config
@@ -67,6 +73,8 @@ type model struct {
 	showHelp      bool
 	width         int
 	height        int
+	argsOptionIdx int
+	program       *tea.Program
 }
 
 var (
@@ -87,6 +95,7 @@ func Run(cfg config.Config) error {
 
 	m := newModel(cfg, q, cancel)
 	p := tea.NewProgram(m, tea.WithAltScreen())
+	m.program = p
 	_, err := p.Run()
 	return err
 }
@@ -295,6 +304,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case streamLineMsg:
+		for i := range m.jobs {
+			if m.jobs[i].ID == msg.id {
+				m.jobs[i].Lines = append(m.jobs[i].Lines, msg.line)
+				if i == m.jobCursor {
+					m.updateViewportContent()
+				}
+				break
+			}
+		}
+		return m, nil
+
 	case resultMsg:
 		m = m.applyResult(msg.Result)
 		// Return immediately for result updates
@@ -451,22 +472,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateViewportContent() {
-	if len(m.jobs) > 0 && m.jobCursor < len(m.jobs) {
-		job := m.jobs[m.jobCursor]
-		content := fmt.Sprintf("ID: %s\nStatus: %s\nDuration: %dms\n\n", job.ID, job.Status, job.Result.DurationMs)
-		if job.Result.Error != "" {
-			content += fmt.Sprintf("Error:\n%s\n\n", job.Result.Error)
-		}
-		if job.Result.Stdout != "" {
-			content += fmt.Sprintf("%s\n", job.Result.Stdout)
-		}
-		if job.Result.Stderr != "" {
-			content += fmt.Sprintf("STDERR:\n%s\n", job.Result.Stderr)
-		}
-		m.viewport.SetContent(content)
-	} else {
+	if len(m.jobs) == 0 || m.jobCursor >= len(m.jobs) {
 		m.viewport.SetContent("Select a job to view output.")
+		return
 	}
+	job := m.jobs[m.jobCursor]
+	content := fmt.Sprintf("ID: %s\nStatus: %s\nDuration: %dms\n\n",
+		job.ID, job.Status, job.Result.DurationMs)
+	if job.Result.Error != "" {
+		content += fmt.Sprintf("Error:\n%s\n\n", job.Result.Error)
+	}
+	// Prefer streamed lines if available, fall back to buffered stdout
+	if len(job.Lines) > 0 {
+		content += strings.Join(job.Lines, "\n") + "\n"
+	} else if job.Result.Stdout != "" {
+		content += job.Result.Stdout + "\n"
+	}
+	if job.Result.Stderr != "" {
+		content += fmt.Sprintf("STDERR:\n%s\n", job.Result.Stderr)
+	}
+	m.viewport.SetContent(content)
 }
 
 func (m model) View() string {
@@ -795,6 +820,8 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 	job := uiJob{ID: id, Title: jobTitle, Status: "running", Cancel: cancel}
 
 	script := pluginPath(cmdDef.Script)
+	prog := m.program // capture for goroutine closure
+
 	if err := m.queue.Submit(runner.Job{
 		ID:      id,
 		Command: cmdDef.Name,
@@ -806,6 +833,11 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 				Timeout: time.Duration(m.cfg.Timeouts.CommandSeconds) * time.Second,
 				Context: ctx,
 				APIKeys: m.cfg.APIKeys,
+				LineCallback: func(line string) {
+					if prog != nil {
+						prog.Send(streamLineMsg{id: id, line: line})
+					}
+				},
 			})
 			result.ID = id
 			return result, err
@@ -827,51 +859,8 @@ func (m *model) cycleArgs(dir int) {
 	if len(cmd.ArgsOptions) == 0 {
 		return
 	}
-
-	current := m.argsInput.Value()
-	idx := -1
-
-	// Find which option is currently selected
-	for i, opt := range cmd.ArgsOptions {
-		if strings.HasPrefix(current, opt) {
-			idx = i
-			break
-		}
-	}
-
-	if idx == -1 {
-		idx = 0
-	} else {
-		idx = (idx + dir) % len(cmd.ArgsOptions)
-		if idx < 0 {
-			idx = len(cmd.ArgsOptions) - 1
-		}
-	}
-
-	// Extract any user arguments after the category
-	var extraArgs string
-	if len(current) > 0 {
-		parts := strings.Fields(current)
-		// Find parts that don't match any category option
-		var extra []string
-		for _, part := range parts {
-			isCategory := false
-			for _, opt := range cmd.ArgsOptions {
-				if strings.HasPrefix(part, strings.Fields(opt)[0]) {
-					isCategory = true
-					break
-				}
-			}
-			if !isCategory {
-				extra = append(extra, part)
-			}
-		}
-		if len(extra) > 0 {
-			extraArgs = " " + strings.Join(extra, " ")
-		}
-	}
-
-	val := cmd.ArgsOptions[idx] + extraArgs
+	m.argsOptionIdx = (m.argsOptionIdx + dir + len(cmd.ArgsOptions)) % len(cmd.ArgsOptions)
+	val := cmd.ArgsOptions[m.argsOptionIdx]
 	m.argsInput.SetValue(val)
 	m.argsInput.SetCursor(len(val))
 }

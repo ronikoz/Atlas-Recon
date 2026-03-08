@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -105,6 +106,32 @@ func pythonVenvPath() string {
 	return filepath.Join(home, ".cache", "ct_plugins", "env")
 }
 
+func stampPath() string {
+	return filepath.Join(pythonVenvPath(), ".installed_pkgs")
+}
+
+func readStamp() map[string]bool {
+	data, err := os.ReadFile(stampPath())
+	if err != nil {
+		return map[string]bool{}
+	}
+	pkgs := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			pkgs[line] = true
+		}
+	}
+	return pkgs
+}
+
+func writeStamp(pkgs []string) {
+	sorted := make([]string, len(pkgs))
+	copy(sorted, pkgs)
+	sort.Strings(sorted)
+	_ = os.WriteFile(stampPath(), []byte(strings.Join(sorted, "\n")+"\n"), 0600)
+}
+
 // GetVenvPython returns the path to the python executable inside the virtual environment
 func GetVenvPython() string {
 	venv := pythonVenvPath()
@@ -156,14 +183,25 @@ func EnsurePythonPackages(packages []string, systemPython string) error {
 
 		// Upgrade pip inside venv quietly
 		exec.Command(venvPython, "-m", "pip", "install", "--upgrade", "pip").Run()
+
+		// Remove stamp so it gets rebuilt for the fresh venv
+		_ = os.Remove(stampPath())
 	}
 
-	for _, pkg := range packages {
-		cmd := exec.Command(venvPython, "-m", "pip", "show", pkg)
-		if err := cmd.Run(); err == nil {
-			continue // package already installed in venv
-		}
+	stamp := readStamp()
+	var newPkgs []string
 
+	for _, pkg := range packages {
+		if stamp[pkg] {
+			continue // already installed per stamp, skip pip show
+		}
+		// Check if installed but not yet in stamp
+		checkCmd := exec.Command(venvPython, "-m", "pip", "show", pkg)
+		if err := checkCmd.Run(); err == nil {
+			newPkgs = append(newPkgs, pkg) // already installed, add to stamp
+			continue
+		}
+		// Install it
 		fmt.Fprintf(os.Stderr, "installing python package: %s\n", pkg)
 		install := exec.Command(venvPython, "-m", "pip", "install", pkg)
 		install.Stdout = os.Stdout
@@ -172,7 +210,19 @@ func EnsurePythonPackages(packages []string, systemPython string) error {
 		if err := install.Run(); err != nil {
 			return fmt.Errorf("failed to install python package %s", pkg)
 		}
+		newPkgs = append(newPkgs, pkg)
 	}
+
+	// Rebuild stamp with all known packages
+	if len(newPkgs) > 0 {
+		allPkgs := make([]string, 0, len(stamp)+len(newPkgs))
+		for p := range stamp {
+			allPkgs = append(allPkgs, p)
+		}
+		allPkgs = append(allPkgs, newPkgs...)
+		writeStamp(allPkgs)
+	}
+
 	return nil
 }
 

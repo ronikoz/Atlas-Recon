@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -139,7 +141,7 @@ func (s *Scanner) scanPort(host string, port int) PortResult {
 		Service: getServiceName(port),
 	}
 
-	address := fmt.Sprintf("%s:%d", host, port)
+	address := net.JoinHostPort(host, strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", address, s.scanTimeout)
 	if err != nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -164,27 +166,27 @@ func ParsePorts(portSpec string) ([]int, error) {
 	}
 
 	portsMap := make(map[int]bool)
-	parts := split(portSpec, ",")
+	parts := strings.Split(portSpec, ",")
 
 	for _, part := range parts {
-		part = trim(part)
+		part = strings.TrimSpace(part)
 		if len(part) == 0 {
 			continue
 		}
 
 		// Check if it's a range
-		if contains(part, "-") {
-			rangeParts := split(part, "-")
+		if strings.Contains(part, "-") {
+			rangeParts := strings.Split(part, "-")
 			if len(rangeParts) != 2 {
 				return nil, fmt.Errorf("invalid port range: %s", part)
 			}
 
-			start, err := parsePort(trim(rangeParts[0]))
+			start, err := parsePort(strings.TrimSpace(rangeParts[0]))
 			if err != nil {
 				return nil, err
 			}
 
-			end, err := parsePort(trim(rangeParts[1]))
+			end, err := parsePort(strings.TrimSpace(rangeParts[1]))
 			if err != nil {
 				return nil, err
 			}
@@ -221,7 +223,7 @@ func ParsePorts(portSpec string) ([]int, error) {
 	return ports, nil
 }
 
-// Helper functions
+// parsePort validates and parses a port number string
 func parsePort(s string) (int, error) {
 	var port int
 	_, err := fmt.Sscanf(s, "%d", &port)
@@ -229,42 +231,6 @@ func parsePort(s string) (int, error) {
 		return 0, fmt.Errorf("invalid port: %s", s)
 	}
 	return port, nil
-}
-
-func split(s, sep string) []string {
-	var result []string
-	var current string
-	for _, ch := range s {
-		if string(ch) == sep {
-			result = append(result, current)
-			current = ""
-		} else {
-			current += string(ch)
-		}
-	}
-	result = append(result, current)
-	return result
-}
-
-func trim(s string) string {
-	start := 0
-	end := len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
-		end--
-	}
-	return s[start:end]
-}
-
-func contains(s, substr string) bool {
-	for i := 0; i < len(s)-len(substr)+1; i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // getServiceName returns common service names for ports

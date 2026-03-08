@@ -56,6 +56,8 @@ func (q *Queue) Start(ctx context.Context) {
 					case q.results <- result:
 					case <-ctx.Done():
 						return
+					case <-q.closed:
+						return
 					}
 				}
 			}
