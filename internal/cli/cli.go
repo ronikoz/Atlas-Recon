@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,11 +12,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ronikoz/atlas-recon/internal/config"
+	"github.com/ronikoz/atlas-recon/internal/crawl"
+	"github.com/ronikoz/atlas-recon/internal/dns"
 	"github.com/ronikoz/atlas-recon/internal/plugins"
 	"github.com/ronikoz/atlas-recon/internal/runner"
 	"github.com/ronikoz/atlas-recon/internal/scanner"
 	"github.com/ronikoz/atlas-recon/internal/storage"
 	"github.com/ronikoz/atlas-recon/internal/tui"
+	"github.com/ronikoz/atlas-recon/internal/web"
 	"github.com/spf13/cobra"
 )
 
@@ -67,6 +71,7 @@ func buildRoot() *cobra.Command {
 		scanCmd(), dnsCmd(), osintCmd(), reconCmd(), webCmd(),
 		reportCmd(), dashboardCmd(), resultsCmd(), phoneCmd(),
 		geoCmd(), conflictCmd(), marketsCmd(), socialCmd(), flightCmd(), warCmd(),
+		lanCmd(),
 	)
 
 	cobra.OnFinalize(func() {
@@ -94,16 +99,27 @@ func scanCmd() *cobra.Command {
 
 func dnsCmd() *cobra.Command {
 	var targetsFile string
+	var typesStr string
+	var usePlugin bool
 	cmd := &cobra.Command{
 		Use:   "dns <domain>",
 		Short: "Run DNS lookups and record gathering",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPluginHelper("dns", "dns_lookup.py", "usage: ct dns <domain>",
-				args, []string{"dnspython"}, nil, targetsFile)
+			if usePlugin || targetsFile != "" {
+				return runPluginHelper("dns", "dns_lookup.py", "usage: ct dns <domain>",
+					args, []string{"dnspython"}, nil, targetsFile)
+			}
+			if len(args) == 0 {
+				fmt.Fprintln(os.Stderr, "usage: ct dns <domain>")
+				return nil
+			}
+			return runNativeDNS(args[0], typesStr)
 		},
 	}
 	cmd.Flags().StringVar(&targetsFile, "targets-file", "", "file with one target per line")
+	cmd.Flags().StringVar(&typesStr, "types", "A,AAAA,MX,NS,TXT,CNAME", "record types to query")
+	cmd.Flags().BoolVar(&usePlugin, "plugin", false, "use Python plugin instead of native resolver")
 	return cmd
 }
 
@@ -145,15 +161,28 @@ func reconCmd() *cobra.Command {
 
 func webCmd() *cobra.Command {
 	var targetsFile string
+	var webInsecure bool
+	var webTimeout int
+	var usePlugin bool
 	cmd := &cobra.Command{
 		Use:   "web <url>",
 		Short: "Run web-specific checks",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPluginHelper("web", "web_check.py", "usage: ct web <url>", args, []string{"requests"}, nil, targetsFile)
+			if usePlugin || targetsFile != "" {
+				return runPluginHelper("web", "web_check.py", "usage: ct web <url>", args, []string{"requests"}, nil, targetsFile)
+			}
+			if len(args) == 0 {
+				fmt.Fprintln(os.Stderr, "usage: ct web <url>")
+				return nil
+			}
+			return runNativeWeb(args[0], webTimeout, webInsecure)
 		},
 	}
 	cmd.Flags().StringVar(&targetsFile, "targets-file", "", "file with one target per line")
+	cmd.Flags().BoolVar(&webInsecure, "insecure", false, "skip TLS certificate verification")
+	cmd.Flags().IntVar(&webTimeout, "timeout", 0, "request timeout in seconds (default from config)")
+	cmd.Flags().BoolVar(&usePlugin, "plugin", false, "use Python plugin instead of native probe")
 	return cmd
 }
 
@@ -297,6 +326,182 @@ func warCmd() *cobra.Command {
 	return cmd
 }
 
+// --- lan commands ---
+
+func lanCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "lan",
+		Short: "Authorized LAN discovery, crawl, and mapping",
+	}
+	cmd.AddCommand(lanDiscoverCmd(), lanCrawlCmd(), lanMapCmd())
+	return cmd
+}
+
+func lanDiscoverCmd() *cobra.Command {
+	var cidrStr string
+	var useLocal bool
+	var portSpec string
+	var maxHosts int
+	var timeoutSec int
+	var inspect bool
+	var insecure bool
+
+	cmd := &cobra.Command{
+		Use:   "discover",
+		Short: "Discover live hosts and services in a LAN range",
+		Long: `Scan an explicit CIDR range or auto-detect local private interfaces to find
+live hosts and open TCP ports. Requires --cidr or --local.
+
+Use --inspect to probe discovered HTTP(S) services for status, title, and TLS metadata.
+
+Examples:
+  ct lan discover --cidr [IP_ADDRESS]/24 --ports 80,443,8080,8443
+  ct lan discover --local --ports 80,443 --inspect --json`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLanDiscover(cidrStr, useLocal, portSpec, maxHosts, timeoutSec, inspect, insecure)
+		},
+	}
+	cmd.Flags().StringVar(&cidrStr, "cidr", "", "CIDR range to scan (e.g. [IP_ADDRESS]/24)")
+	cmd.Flags().BoolVar(&useLocal, "local", false, "auto-detect local private interface CIDRs")
+	cmd.Flags().StringVar(&portSpec, "ports", "80,443,8080,8443", "ports to scan")
+	cmd.Flags().IntVar(&maxHosts, "max-hosts", 256, "maximum hosts to scan")
+	cmd.Flags().IntVar(&timeoutSec, "timeout", 0, "per-host scan timeout in seconds (default from config)")
+	cmd.Flags().BoolVar(&inspect, "inspect", true, "probe HTTP(S) services for metadata")
+	cmd.Flags().BoolVar(&insecure, "insecure", false, "skip TLS certificate verification")
+	cmd.MarkFlagsOneRequired("cidr", "local")
+	return cmd
+}
+
+func lanCrawlCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "crawl",
+		Short: "Crawl HTTP(S) services discovered on a LAN (not yet implemented)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("lan crawl is not yet implemented")
+		},
+	}
+	return cmd
+}
+
+func lanMapCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "map",
+		Short: "Export the most recent LAN scan map (not yet implemented)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("lan map is not yet implemented")
+		},
+	}
+	return cmd
+}
+
+func runLanDiscover(cidrStr string, useLocal bool, portSpec string, maxHosts int, timeoutSec int, inspect bool, insecure bool) error {
+	// Resolve CIDR ranges
+	var cidrs []*net.IPNet // shadowed; use net package below
+	if useLocal {
+		localCIDRs, err := crawl.DiscoverLocalCIDRs()
+		if err != nil {
+			return fmt.Errorf("detecting local interfaces: %w", err)
+		}
+		if len(localCIDRs) == 0 {
+			return fmt.Errorf("no private network interfaces found")
+		}
+		cidrs = localCIDRs
+		if !cfg.Output.JSON {
+			for _, cidr := range cidrs {
+				fmt.Printf("Auto-detected interface: %s\n", cidr)
+			}
+		}
+	} else {
+		cidr, err := crawl.ParseCIDR(cidrStr)
+		if err != nil {
+			return fmt.Errorf("invalid CIDR: %w", err)
+		}
+		if err := crawl.ValidateScope(cidr); err != nil {
+			return err
+		}
+		cidrs = []*net.IPNet{cidr}
+	}
+
+	ports, err := scanner.ParsePorts(portSpec)
+	if err != nil {
+		return fmt.Errorf("parsing ports: %w", err)
+	}
+
+	timeout := time.Duration(cfg.Timeouts.CommandSeconds) * time.Second
+	if timeoutSec > 0 {
+		timeout = time.Duration(timeoutSec) * time.Second
+	}
+
+	// Scan each CIDR
+	if !cfg.Output.JSON {
+		fmt.Fprintf(os.Stderr, "Starting LAN discovery...\n")
+	}
+
+	var allResults []*crawl.DiscoveryResult
+	for _, cidr := range cidrs {
+		result, err := crawl.RunDiscovery(cidr, ports, maxHosts, cfg.Concurrency, timeout)
+		if err != nil {
+			if !cfg.Output.JSON {
+				fmt.Fprintf(os.Stderr, "discovery error for %s: %v\n", cidr, err)
+			}
+			continue
+		}
+		allResults = append(allResults, result)
+
+		if !cfg.Output.JSON {
+			totalOpen := 0
+			for _, h := range result.Hosts {
+				totalOpen += len(h.OpenPorts)
+			}
+			fmt.Printf("CIDR %s: %d hosts, %d open ports\n", cidr, len(result.Hosts), totalOpen)
+		}
+	}
+
+	if len(allResults) == 0 {
+		return fmt.Errorf("no results from any scanned CIDR")
+	}
+
+	// Run HTTP(S) inspection if requested
+	type enrichedHost struct {
+		IP       string               `json:"ip"`
+		Ports    []scanner.PortResult  `json:"open_ports"`
+		Services []crawl.ServiceInfo   `json:"services,omitempty"`
+	}
+	type discoverOutput struct {
+		CIDR  string          `json:"cidr"`
+		Hosts []enrichedHost  `json:"hosts"`
+	}
+
+	var outputs []discoverOutput
+	for _, result := range allResults {
+		out := discoverOutput{CIDR: result.CIDR}
+		for _, host := range result.Hosts {
+			eh := enrichedHost{IP: host.IP, Ports: host.OpenPorts}
+			if inspect && len(host.OpenPorts) > 0 {
+				eh.Services = crawl.InspectHostServices(host, crawl.InspectOptions{
+					Timeout:  timeout,
+					Insecure: insecure,
+				})
+				if !cfg.Output.JSON {
+					for _, svc := range eh.Services {
+						fmt.Print(crawl.FormatServiceInfo(&svc))
+					}
+				}
+			}
+			out.Hosts = append(out.Hosts, eh)
+		}
+		outputs = append(outputs, out)
+	}
+
+	if cfg.Output.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(outputs)
+	}
+
+	return nil
+}
+
 // --- implementation functions ---
 
 func runScan(target, portSpec string) error {
@@ -328,6 +533,62 @@ func runScan(target, portSpec string) error {
 		}
 	}
 	fmt.Printf("\nSummary: %d open, %d closed/filtered\n", openPorts, len(result.Ports)-openPorts)
+	return nil
+}
+
+func runNativeDNS(domain, typesStr string) error {
+	rtypes := strings.Split(typesStr, ",")
+	for i := range rtypes {
+		rtypes[i] = strings.TrimSpace(rtypes[i])
+	}
+	records, err := dns.Lookup(domain, rtypes)
+	if err != nil {
+		return err
+	}
+	if cfg.Output.JSON {
+		data, err := dns.RecordsToJSON(records)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+	fmt.Print(dns.FormatRecords(records))
+	return nil
+}
+
+func runNativeWeb(target string, timeoutSec int, insecure bool) error {
+	timeout := time.Duration(cfg.Timeouts.CommandSeconds)
+	if timeoutSec > 0 {
+		timeout = time.Duration(timeoutSec)
+	}
+	timeout *= time.Second
+
+	result, err := web.Probe(target, web.ProbeOptions{
+		Timeout:  timeout,
+		Insecure: insecure,
+	})
+	if err != nil {
+		return err
+	}
+
+	if cfg.Output.JSON {
+		data, err := web.ProbeToJSON(result)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+		if result.Error != "" {
+			return fmt.Errorf("%s", result.Error)
+		}
+		return nil
+	}
+
+	fmt.Print(web.FormatProbe(result))
+	if result.Error != "" {
+		fmt.Println()
+		return fmt.Errorf("%s", result.Error)
+	}
 	return nil
 }
 

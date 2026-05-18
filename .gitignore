@@ -5,3 +5,5 @@ __pycache__/
 internal/plugins/python/
 *.db
 results.db
+# Local Pi runtime state
+.atl/
