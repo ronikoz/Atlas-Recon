@@ -80,8 +80,6 @@ internal/plugins/   Compatibility layer for remaining Python plugins
 
 The LAN crawler discovers hosts and services inside explicitly authorized local network ranges, inspects reachable HTTP(S) services, crawls bounded page depth, and emits a graph of networks, hosts, services, pages, links, redirects, and certificates.
 
-This is not an exploit scanner, credential tester, or vulnerability attack tool.
-
 ### Proposed CLI
 
 ```bash
@@ -109,8 +107,7 @@ This is not an exploit scanner, credential tester, or vulnerability attack tool.
 - Default per-host timeout: short and configurable.
 - Default concurrency: conservative and tied to config.
 - Support `--exclude` CIDRs and hosts.
-- Do not crawl external hosts unless `--allow-external-links` is explicitly set.
-- Do not submit forms, brute force credentials, run exploit payloads, or bypass authentication.
+- Support `--allow-external-links` to crawl outside the LAN scope when authorized.
 
 ---
 

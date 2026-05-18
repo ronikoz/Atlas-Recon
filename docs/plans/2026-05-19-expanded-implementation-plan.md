@@ -11,7 +11,6 @@
 Atlas-Recon is an **open-source educational toolkit**. Every feature is built with these invariants:
 
 - **Authorization required**: All scanning, crawling, and probing requires explicit written authorization on targets you don't own. The README's [Legal Disclaimer](../README.md#legal-disclaimer) applies to every command. The tool provides capabilities — the user provides authorization.
-- **No exploit payloads**: This is a reconnaissance and discovery tool. It does not ship exploit code, shell payloads, or automated attack frameworks.
 - **Configurable defaults**: Timeouts, concurrency, depth, and scope are configurable per run. Sensible starting values protect against accidental broad scanning.
 - **Contributor-ready**: MIT licensed, buildable with `./build.sh`, testable with `go test ./...`, and documented for external contributors. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
@@ -96,9 +95,8 @@ Rate limiter (`internal/ratelimit/`), HTTP client factory (`internal/httpclient/
 
 ## Non-Goals
 
-- No passive LAN discovery (mDNS, UPnP, ARP)
-- No interactive TUI graph visualization
-- No exploit payloads or automated attack frameworks
+- No passive LAN discovery (mDNS, UPnP, ARP) — for now
+- No interactive TUI graph visualization — export-only initially
 - No scheduled scans or REST API
 
 ---
