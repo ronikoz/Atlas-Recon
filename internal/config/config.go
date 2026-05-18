@@ -89,5 +89,3 @@ func resolvePath(path string) (string, error) {
 	}
 	return "", nil
 }
-
-// Signed-off-by: ronikoz

@@ -23,6 +23,3 @@ Thanks for taking the time to contribute.
 
 ## Security
 If you believe you have found a security issue, please report it privately and do not open a public issue.
-
-
-Signed-off-by: ronikoz

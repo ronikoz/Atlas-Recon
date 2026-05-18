@@ -928,5 +928,3 @@ func truncate(text string, limit int) string {
 	}
 	return text[:limit-3] + "..."
 }
-
-// Signed-off-by: ronikoz

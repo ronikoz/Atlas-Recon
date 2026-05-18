@@ -82,7 +82,7 @@ func scanCmd() *cobra.Command {
 	var portSpec string
 	cmd := &cobra.Command{
 		Use:   "scan <target>",
-		Short: "Run scanning tasks (nmap, http checks)",
+		Short: "Run native TCP port scans",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runScan(args[0], portSpec)
@@ -100,7 +100,7 @@ func dnsCmd() *cobra.Command {
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPluginHelper("dns", "dns_lookup.py", "usage: ct dns <domain>",
-				args, nil, []runner.Dependency{nslookupDependency()}, targetsFile)
+				args, []string{"dnspython"}, nil, targetsFile)
 		},
 	}
 	cmd.Flags().StringVar(&targetsFile, "targets-file", "", "file with one target per line")
@@ -583,25 +583,3 @@ func storeScanResult(args []string, result *scanner.ScanResult) {
 func resultID(prefix string) string {
 	return prefix + "-" + uuid.New().String()
 }
-
-func nslookupDependency() runner.Dependency {
-	return runner.Dependency{
-		Name:        "nslookup",
-		CheckCmd:    "nslookup",
-		Description: "DNS lookup utility",
-		Installers: map[string][]runner.Installer{
-			"darwin": {{Name: "brew", Command: []string{"brew", "install", "bind"}}},
-			"linux": {
-				{Name: "apt", Command: []string{"sudo", "apt-get", "install", "-y", "dnsutils"}},
-				{Name: "dnf", Command: []string{"sudo", "dnf", "install", "-y", "bind-utils"}},
-				{Name: "pacman", Command: []string{"sudo", "pacman", "-S", "--noconfirm", "bind"}},
-			},
-			"windows": {
-				{Name: "winget", Command: []string{"winget", "install", "--id", "ISC.Bind", "-e"}},
-				{Name: "choco", Command: []string{"choco", "install", "-y", "bind"}},
-			},
-		},
-	}
-}
-
-// Signed-off-by: ronikoz

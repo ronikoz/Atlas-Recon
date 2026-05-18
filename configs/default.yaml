@@ -7,13 +7,9 @@ storage:
   enabled: true
 paths:
   python: python3
-  nmap: nmap
-  nslookup: nslookup
   whois: whois
 
 apikeys:
   nasa: ""
   shodan: ""
   opensky: ""
-
-# Signed-off-by: ronikoz

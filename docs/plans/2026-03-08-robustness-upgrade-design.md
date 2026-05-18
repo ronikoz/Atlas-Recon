@@ -91,7 +91,7 @@ Remove `Paths.Nmap` and `Paths.Nslookup` from the `Config` struct and from `Defa
 
 ### 2E. Pip Check Caching — `internal/runner/deps.go`
 
-`EnsurePythonPackages` writes a stamp file at `~/.cache/ct_plugins/env/.installed_pkgs` containing a newline-separated sorted list of installed package names. On entry:
+`EnsurePythonPackages` writes a stamp file under the Atlas-Recon Python environment in the OS user cache directory. The stamp contains a newline-separated sorted list of installed package names. On entry:
 1. Read stamp file
 2. If all requested packages are present in the stamp, return immediately (skip all `pip show` calls)
 3. After installing any new package, rewrite the stamp file with the updated list

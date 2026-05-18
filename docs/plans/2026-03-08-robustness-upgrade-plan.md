@@ -22,7 +22,7 @@
 **Step 1: Add cobra**
 
 ```bash
-cd /Users/ronikoz/projects/Atlas-Recon
+cd /path/to/Atlas-Recon
 go get github.com/spf13/cobra@latest
 ```
 
@@ -698,7 +698,6 @@ func nslookupDependency() runner.Dependency {
 	}
 }
 
-// Signed-off-by: ronikoz
 ```
 
 **Step 4: Update runner.RunPython signature**
