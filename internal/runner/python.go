@@ -171,5 +171,3 @@ func exitCode(err error) int {
 	}
 	return 1
 }
-
-// Signed-off-by: ronikoz

@@ -94,5 +94,3 @@ func (q *Queue) Stop() {
 		close(q.results)
 	})
 }
-
-// Signed-off-by: ronikoz

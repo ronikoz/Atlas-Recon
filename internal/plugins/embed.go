@@ -19,12 +19,26 @@ var (
 	cacheMu  sync.Mutex
 )
 
-func init() {
-	home, err := os.UserHomeDir()
-	if err == nil {
-		cacheDir = filepath.Join(home, ".cache", "ct_plugins")
-		_ = os.MkdirAll(cacheDir, 0755)
+// CacheDir returns the OS-specific cache directory used for extracted plugins.
+func CacheDir() (string, error) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	return cacheDirLocked()
+}
+
+func cacheDirLocked() (string, error) {
+	if cacheDir != "" {
+		return cacheDir, nil
 	}
+	root, err := os.UserCacheDir()
+	if err != nil || root == "" {
+		return "", fmt.Errorf("cannot determine user cache directory")
+	}
+	cacheDir = filepath.Join(root, "atlas-recon", "plugins")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("create plugin cache directory: %w", err)
+	}
+	return cacheDir, nil
 }
 
 // GetPluginPath returns the path to a plugin script, extracting it from
@@ -51,10 +65,6 @@ func GetPluginPath(name string) (string, error) {
 }
 
 func extractPlugin(name string) (string, error) {
-	if cacheDir == "" {
-		return "", fmt.Errorf("cannot determine plugin cache directory")
-	}
-
 	safeName := filepath.Base(name)
 	if safeName == "." || safeName == "" || safeName != name || strings.Contains(name, "..") || strings.Contains(name, "\\") {
 		return "", fmt.Errorf("invalid plugin name: %s", name)
@@ -62,6 +72,10 @@ func extractPlugin(name string) (string, error) {
 
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
+	dir, err := cacheDirLocked()
+	if err != nil {
+		return "", err
+	}
 
 	// Read the embedded file
 	data, err := fs.ReadFile(pluginFS, filepath.Join("python", safeName))
@@ -70,7 +84,7 @@ func extractPlugin(name string) (string, error) {
 	}
 
 	// Write to cache
-	cachePath := filepath.Join(cacheDir, safeName)
+	cachePath := filepath.Join(dir, safeName)
 
 	// Check if already extracted and up-to-date
 	if existingData, err := os.ReadFile(cachePath); err == nil {

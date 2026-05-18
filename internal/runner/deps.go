@@ -99,11 +99,11 @@ func BaseInstallers(pkg string, wingetID string, chocoPkg string) map[string][]I
 }
 
 func pythonVenvPath() string {
-	home, err := os.UserHomeDir()
+	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".cache", "ct_plugins", "env")
+	return filepath.Join(cacheDir, "atlas-recon", "python-env")
 }
 
 func stampPath() string {
@@ -225,5 +225,3 @@ func EnsurePythonPackages(packages []string, systemPython string) error {
 
 	return nil
 }
-
-// Signed-off-by: ronikoz
