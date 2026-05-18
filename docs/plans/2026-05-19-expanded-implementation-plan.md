@@ -2,6 +2,18 @@
 
 **2026-05-19** · **Status:** Phases 1-4 complete, Phase 5 next
 **Commit:** `ddc6a55` · **Binary:** 16MB · **Tests:** 77+ across 8 packages
+**License:** MIT · **Use:** Educational and authorized testing only
+
+---
+
+## Project Principles
+
+Atlas-Recon is an **open-source educational toolkit**. Every feature is built with these invariants:
+
+- **Authorization first**: All scanning, crawling, and probing requires explicit written authorization on targets you don't own. The README's [Legal Disclaimer](../README.md#legal-disclaimer) applies to every command.
+- **No attack capabilities**: This is a reconnaissance and discovery tool — not an exploit scanner, credential tester, or vulnerability attack framework.
+- **Conservative defaults**: LAN crawling defaults to same-host scope, bounded depth, and explicit CIDR requirements. No feature ever defaults to scanning public ranges.
+- **Contributor-ready**: MIT licensed, buildable with `./build.sh`, testable with `go test ./...`, and documented for external contributors. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
 
@@ -66,7 +78,7 @@ ct lan discover ... --no-store   # skip persistence
 
 ### Phase 6: Bounded Crawler
 
-URL frontier with BFS, depth/page limits, same-host scope. `ct lan crawl --depth 1 --max-pages 500`. Tests via `httptest` servers with interlinked HTML.
+URL frontier with BFS, depth/page limits, **same-host scope by default**. `ct lan crawl --depth 1 --max-pages 500`. The crawler never leaves authorized LAN boundaries unless `--allow-external-links` is explicitly set. Tests via `httptest` servers with interlinked HTML. No form submission, no JavaScript execution, no credential testing.
 
 ### Phase 7: TUI Integration
 
@@ -86,7 +98,8 @@ Rate limiter (`internal/ratelimit/`), HTTP client factory (`internal/httpclient/
 
 - No passive LAN discovery (mDNS, UPnP, ARP)
 - No interactive TUI graph visualization
-- No vulnerability scanning or credential testing
+- No vulnerability scanning, credential testing, or exploit payloads
+- No scanning of targets without authorization — authorization is the user's responsibility
 - No scheduled scans or REST API
 
 ---

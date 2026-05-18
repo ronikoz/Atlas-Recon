@@ -2,6 +2,7 @@
 
 **Date:** 2026-05-19
 **Method:** KISS — every task is atomic, testable, and <200 lines changed where possible.
+**Project:** Open-source (MIT) · Educational and authorized testing only · [Legal Disclaimer](../README.md#legal-disclaimer)
 
 ### Progress: 31/72 tasks (43%) · Phases 1-4 done · 77+ tests · 8 packages
 
@@ -296,6 +297,7 @@
 **File:** `internal/crawl/frontier.go` (new)
 - Frontier type: maxDepth, maxPages, visited set, FIFO queue
 - Add(), Next(), Visited(), Remaining()
+- Same-host scope enforced by default — never crawls external hosts unless `--allow-external-links` is explicitly set
 
 ### Task 6.2 [CODE] ⬜ — Implement URL normalizer
 **File:** `internal/crawl/frontier.go`
