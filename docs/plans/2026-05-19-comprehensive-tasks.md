@@ -2,7 +2,32 @@
 
 **Date:** 2026-05-19
 **Method:** KISS — every task is atomic, testable, and <200 lines changed where possible.
-**Progress:** Phases 1-4 complete (44/72 tasks done)
+
+### Progress: 31/72 tasks (43%) · Phases 1-4 done · 77+ tests · 8 packages
+
+| Phase | Tasks Complete | Status |
+|---|---|---|
+| 1: Tests & Contracts | 7/7 | ✅ |
+| 2: Native DNS + Web | 13/13 | ✅ |
+| 3: LAN Discovery Core | 8/8 | ✅ |
+| 4: HTTP Inspection | 3/3 | ✅ |
+| **5: Graph & Exporters** | 0/9 | **← Next** |
+| 6: Bounded Crawler | 0/9 | ⬜ |
+| 7: TUI LAN | 0/4 | ⬜ |
+| 8: Plugin Migration | 0/12 | ⬜ |
+| 9: Infrastructure | 0/7 | ⬜ |
+
+### What's Next: Phase 5 Tasks
+
+- [ ] 5.1 — `internal/graph/model.go` — node/edge types
+- [ ] 5.2 — `internal/graph/store.go` — SQLite persistence
+- [ ] 5.3 — `internal/graph/store_test.go` — CRUD + relationship tests
+- [ ] 5.4 — `internal/graph/export.go` — JSON exporter
+- [ ] 5.5 — `internal/graph/export.go` — Markdown exporter
+- [ ] 5.6 — `internal/graph/export.go` — DOT exporter
+- [ ] 5.7 — `internal/graph/export_test.go` — snapshot tests
+- [ ] 5.8 — `internal/cli/cli.go` — wire graph storage into `lan discover`
+- [ ] 5.9 — `internal/cli/cli.go` — implement `lan map` subcommand
 
 ---
 

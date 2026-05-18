@@ -195,3 +195,18 @@ Used by the `results` command when listing stored invocations (`--json`). The ou
 **Not guaranteed:**
 - `args[0]` (script path) is an internal implementation detail. Its path may change across installs, OSes, and releases.
 - Order of `ports` in `ScanResult` is sorted by port number today but sort stability is not contractually guaranteed for edge cases.
+
+---
+
+## Quick Reference
+
+| I want to... | Look at |
+|---|---|
+| Parse output from a plugin command | `runner.Result` — universal envelope |
+| Parse output from `ct scan` | `scanner.ScanResult` + `PortResult` |
+| Parse output from `ct results` | `storage.Record` (array) |
+| Parse output from `ct dns` (native) | `dns.Record` — the `records` JSON key |
+| Parse output from `ct web` (native) | `web.ProbeResult` |
+| Parse output from `ct lan discover` | `crawl.DiscoveryResult` (see `internal/crawl/discover.go`) |
+| Know which shape a command uses | Command→Shape table (above) |
+| Understand what fields are stable | Schema Stability (above) |
