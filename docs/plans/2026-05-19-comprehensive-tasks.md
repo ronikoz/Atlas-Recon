@@ -297,7 +297,7 @@
 **File:** `internal/crawl/frontier.go` (new)
 - Frontier type: maxDepth, maxPages, visited set, FIFO queue
 - Add(), Next(), Visited(), Remaining()
-- Same-host scope enforced by default — never crawls external hosts unless `--allow-external-links` is explicitly set
+- Scope enforcement via configurable rules
 
 ### Task 6.2 [CODE] ⬜ — Implement URL normalizer
 **File:** `internal/crawl/frontier.go`

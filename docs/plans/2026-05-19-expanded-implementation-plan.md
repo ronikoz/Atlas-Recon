@@ -10,9 +10,9 @@
 
 Atlas-Recon is an **open-source educational toolkit**. Every feature is built with these invariants:
 
-- **Authorization first**: All scanning, crawling, and probing requires explicit written authorization on targets you don't own. The README's [Legal Disclaimer](../README.md#legal-disclaimer) applies to every command.
-- **No attack capabilities**: This is a reconnaissance and discovery tool — not an exploit scanner, credential tester, or vulnerability attack framework.
-- **Conservative defaults**: LAN crawling defaults to same-host scope, bounded depth, and explicit CIDR requirements. No feature ever defaults to scanning public ranges.
+- **Authorization required**: All scanning, crawling, and probing requires explicit written authorization on targets you don't own. The README's [Legal Disclaimer](../README.md#legal-disclaimer) applies to every command. The tool provides capabilities — the user provides authorization.
+- **No exploit payloads**: This is a reconnaissance and discovery tool. It does not ship exploit code, shell payloads, or automated attack frameworks.
+- **Configurable defaults**: Timeouts, concurrency, depth, and scope are configurable per run. Sensible starting values protect against accidental broad scanning.
 - **Contributor-ready**: MIT licensed, buildable with `./build.sh`, testable with `go test ./...`, and documented for external contributors. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
@@ -78,7 +78,7 @@ ct lan discover ... --no-store   # skip persistence
 
 ### Phase 6: Bounded Crawler
 
-URL frontier with BFS, depth/page limits, **same-host scope by default**. `ct lan crawl --depth 1 --max-pages 500`. The crawler never leaves authorized LAN boundaries unless `--allow-external-links` is explicitly set. Tests via `httptest` servers with interlinked HTML. No form submission, no JavaScript execution, no credential testing.
+URL frontier with BFS, depth/page limits, scope controls, and progress tracking. `ct lan crawl --depth 1 --max-pages 500`. Supports form interaction and credential testing on authorized targets. Tests via `httptest` servers with interlinked HTML.
 
 ### Phase 7: TUI Integration
 
@@ -98,8 +98,7 @@ Rate limiter (`internal/ratelimit/`), HTTP client factory (`internal/httpclient/
 
 - No passive LAN discovery (mDNS, UPnP, ARP)
 - No interactive TUI graph visualization
-- No vulnerability scanning, credential testing, or exploit payloads
-- No scanning of targets without authorization — authorization is the user's responsibility
+- No exploit payloads or automated attack frameworks
 - No scheduled scans or REST API
 
 ---
@@ -135,7 +134,7 @@ Rate limiter (`internal/ratelimit/`), HTTP client factory (`internal/httpclient/
 | Risk | Mitigation |
 |---|---|
 | DNS/web break existing workflows | `--plugin` flag preserves Python fallback |
-| Crawler escapes LAN scope | Same-host default, `--allow-external-links` opt-in |
+| Crawler leaves intended scope | Configurable scope controls, explicit `--allow-external-links` opt-in |
 | Slow/noisy LAN scans | Conservative defaults (256 hosts, 500 pages, short timeouts) |
 | Self-signed TLS | `--insecure` flag |
 | Python migration breaks users | Compatibility runner stays for 2+ releases |
