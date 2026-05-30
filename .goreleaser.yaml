@@ -5,7 +5,7 @@ builds:
     binary: ct
     main: ./cmd/ct
     env:
-      - CGO_ENABLED=1
+      - CGO_ENABLED=0
     goos:
       - linux
       - windows

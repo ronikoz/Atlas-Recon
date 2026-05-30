@@ -26,9 +26,9 @@ Atlas-Recon now has **4 native Go commands** (scan, dns, web, lan discover) — 
 | ✅ | 2: Native DNS + Web | `internal/dns/`, `internal/web/` — `--plugin` fallback preserved |
 | ✅ | 3: LAN Discovery | `internal/crawl/scope.go`, `discover.go` — `ct lan discover --local` |
 | ✅ | 4: HTTP Inspection | `internal/crawl/inspect.go` — `--inspect` flag, TLS extraction |
-| ⬜ | **5: Graph & Exporters** | `internal/graph/` — SQLite store + JSON/Markdown/DOT exporters |
-| ⬜ | 6: Bounded Crawler | URL frontier, page crawler, scope enforcement |
-| ⬜ | 7: TUI LAN | Dashboard integration for lan commands |
+| ✅ | 5: Graph & Exporters | `internal/graph/` — SQLite store + JSON/Markdown/DOT exporters |
+| ✅ initial | 6: Bounded Crawler | URL frontier, page crawler, scope enforcement, CLI wiring |
+| ⬜ | **7: TUI LAN** | Dashboard integration for lan commands |
 | ⬜ | 8: Plugin Migration | Native replacements for remaining 10 Python plugins |
 | ⬜ | 9: Infrastructure | Rate limiter, HTTP client factory, version embedding |
 
@@ -47,9 +47,11 @@ go test ./... -count=1            # expect: 8 packages, all pass
 
 ---
 
-## What's Next: Phase 5 — Graph Model & Exporters
+## Phase 5 — Graph Model & Exporters
 
-### Files to create
+Status: implemented with `internal/graph`, SQLite graph persistence, JSON/Markdown/DOT exporters, `lan discover` storage, and `lan map`.
+
+### Files created
 
 | File | Purpose |
 |---|---|
@@ -77,7 +79,7 @@ ct lan discover ... --no-store   # skip persistence
 
 ### Phase 6: Bounded Crawler
 
-URL frontier with BFS, depth/page limits, scope controls, and progress tracking. `ct lan crawl --depth 1 --max-pages 500`. Supports form interaction and credential testing on authorized targets. Tests via `httptest` servers with interlinked HTML.
+Status: initial implementation complete. URL frontier, normalization, depth/page limits, same-host/same-LAN scope enforcement, page fetch/link extraction, CLI wiring, and graph storage are implemented. Remaining polish: richer progress output, broader HTML parsing, and deeper crawler ergonomics.
 
 ### Phase 7: TUI Integration
 

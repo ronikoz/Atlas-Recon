@@ -9,7 +9,7 @@ Canonical JSON output schemas for Atlas-Recon commands. Every command that suppo
 **Package:** `internal/runner`
 **Go type:** `runner.Result`
 
-Used by all Python-plugin-backed commands (`dns`, `osint`, `recon`, `web`, `phone`, `geo`, `conflict`, `markets`, `social`, `flight`, `war`, `report`). The CLI wraps each plugin invocation in this envelope so automation has a single stable outer shape regardless of which plugin ran.
+Used by Python-plugin-backed commands (`osint`, `recon`, `phone`, `geo`, `conflict`, `markets`, `social`, `flight`, `war`, `report`) and by native commands when explicitly run with `--plugin` (`dns --plugin`, `web --plugin`, or either command with `--targets-file`). The CLI wraps each plugin invocation in this envelope so automation has a single stable outer shape regardless of which plugin ran.
 
 ### Fields
 
@@ -126,6 +126,21 @@ Used exclusively by the native `scan` command. This is the only command that doe
 
 ---
 
+## Native DNS, Web, And LAN Payloads
+
+Native commands emit typed JSON directly and store that typed JSON in `storage.Record.payload`.
+
+| Command | Runtime JSON shape | Stored record kind |
+|---|---|---|
+| `dns` | `{"records": [dns.Record, ...]}` | `dns` |
+| `web` | `web.ProbeResult` | `web` |
+| `lan discover` | Array of discovery objects with `cidr`, `hosts`, `open_ports`, and optional `services` | `lan_discover` |
+| `lan crawl` | `{"scan_id": "...", "pages": [crawl.PageResult, ...], "links": [crawl.LinkResult, ...]}` | `lan_crawl` |
+
+`scan` is also native and stores its full `scanner.ScanResult` payload with `kind: "scan"`.
+
+---
+
 ## `storage.Record` — Stored Result
 
 **Package:** `internal/storage`
@@ -138,7 +153,7 @@ Used by the `results` command when listing stored invocations (`--json`). The ou
 | Field | JSON key | Type | Description |
 |---|---|---|---|
 | `ID` | `id` | string | UUID from the original result. |
-| `Kind` | `kind` | string | `"command"` for plugin invocations, `"scan"` for native scans. |
+| `Kind` | `kind` | string | `"command"` for plugin invocations, or a native kind such as `"scan"`, `"dns"`, `"web"`, or `"lan_discover"`. |
 | `Command` | `command` | string | Subcommand name: `"dns"`, `"scan"`, `"geo"`, etc. |
 | `Args` | `args` | array of strings | Argument list from the invocation. |
 | `StartedAt` | `started_at` | string (RFC 3339) | Original start time. |
@@ -149,7 +164,7 @@ Used by the `results` command when listing stored invocations (`--json`). The ou
 | `Stdout` | `stdout` | string | Captured stdout. |
 | `Stderr` | `stderr` | string | Captured stderr. |
 | `Error` | `error` | string | Error message. |
-| `Payload` | `payload` | string | JSON-serialized scanner result for `kind: "scan"` records. Empty string for `kind: "command"` records. |
+| `Payload` | `payload` | string | JSON-serialized native command payload for native records. Empty string for `kind: "command"` plugin records. |
 
 ---
 
@@ -158,10 +173,10 @@ Used by the `results` command when listing stored invocations (`--json`). The ou
 | Command | `--json` output shape | Notes |
 |---|---|---|
 | `scan` | `scanner.ScanResult` | Native Go. No Python involved. |
-| `dns` | `runner.Result` | Python plugin. `stdout` contains plaintext DNS records. |
+| `dns` | `{"records": [dns.Record, ...]}` | Native Go by default. `--plugin` or `--targets-file` uses `runner.Result`. |
 | `osint` | `runner.Result` | Python plugin. Multi-target: JSON array of Results. |
 | `recon` | `runner.Result` | Python plugin. |
-| `web` | `runner.Result` | Python plugin. |
+| `web` | `web.ProbeResult` | Native Go by default. `--plugin` or `--targets-file` uses `runner.Result`. |
 | `report` | `runner.Result` | Python plugin. |
 | `phone` | `runner.Result` | Python plugin. |
 | `geo` | `runner.Result` | Python plugin. |
@@ -172,7 +187,9 @@ Used by the `results` command when listing stored invocations (`--json`). The ou
 | `war` | `runner.Result` | Python plugin. |
 | `dashboard` | N/A | Interactive TUI. No JSON output. |
 | `results` | Array of `storage.Record` | Native Go. Lists stored invocation history. |
-| `lan` | TBD | Future native commands (Phase 3+). |
+| `lan discover` | Array of discovery objects | Native Go. Stores records as `kind: "lan_discover"`. |
+| `lan crawl` | Crawl result object | Native Go. Discovers services, crawls bounded in-scope links, and stores a graph scan. |
+| `lan map` | JSON, Markdown, or DOT graph export | Native Go. Exports a stored graph scan; defaults to the most recent scan. |
 
 ---
 

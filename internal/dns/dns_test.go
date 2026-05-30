@@ -2,12 +2,15 @@ package dns
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 )
 
 func TestLookupA(t *testing.T) {
-	recs, err := Lookup("cloudflare.com", []string{"A"})
+	stubLookupIP(t, []net.IP{net.ParseIP("192.0.2.10"), net.ParseIP("2001:db8::10")}, nil)
+	recs, err := Lookup("example.com", []string{"A"})
 	if err != nil {
 		t.Fatalf("Lookup A failed: %v", err)
 	}
@@ -25,7 +28,12 @@ func TestLookupA(t *testing.T) {
 }
 
 func TestLookupMX(t *testing.T) {
-	recs, err := Lookup("gmail.com", []string{"MX"})
+	original := lookupMXNet
+	lookupMXNet = func(domain string) ([]*net.MX, error) {
+		return []*net.MX{{Host: "mail.example.com.", Pref: 10}}, nil
+	}
+	t.Cleanup(func() { lookupMXNet = original })
+	recs, err := Lookup("example.com", []string{"MX"})
 	if err != nil {
 		t.Fatalf("Lookup MX failed: %v", err)
 	}
@@ -43,6 +51,7 @@ func TestLookupMX(t *testing.T) {
 }
 
 func TestLookupInvalidDomain(t *testing.T) {
+	stubLookupIP(t, nil, fmt.Errorf("no such host"))
 	_, err := Lookup("this-domain-definitely-does-not-exist-12345.com", []string{"A"})
 	if err == nil {
 		t.Fatal("expected error for nonexistent domain")
@@ -106,4 +115,13 @@ func TestLookupUnsupportedType(t *testing.T) {
 	if !strings.Contains(err.Error(), "unsupported record type") {
 		t.Errorf("expected 'unsupported record type', got: %v", err)
 	}
+}
+
+func stubLookupIP(t *testing.T, ips []net.IP, err error) {
+	t.Helper()
+	original := lookupIP
+	lookupIP = func(domain string) ([]net.IP, error) {
+		return ips, err
+	}
+	t.Cleanup(func() { lookupIP = original })
 }

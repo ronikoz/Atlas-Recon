@@ -8,6 +8,14 @@ import (
 	"strings"
 )
 
+var (
+	lookupIP       = net.LookupIP
+	lookupMXNet    = net.LookupMX
+	lookupNSNet    = net.LookupNS
+	lookupTXTNet   = net.LookupTXT
+	lookupCNAMENet = net.LookupCNAME
+)
+
 // Record represents a single DNS resource record.
 type Record struct {
 	Name  string `json:"name"`
@@ -57,7 +65,7 @@ func lookupType(domain, t string) ([]Record, error) {
 }
 
 func lookupA(domain string) ([]Record, error) {
-	ips, err := net.LookupIP(domain)
+	ips, err := lookupIP(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +79,7 @@ func lookupA(domain string) ([]Record, error) {
 }
 
 func lookupAAAA(domain string) ([]Record, error) {
-	ips, err := net.LookupIP(domain)
+	ips, err := lookupIP(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +93,7 @@ func lookupAAAA(domain string) ([]Record, error) {
 }
 
 func lookupMX(domain string) ([]Record, error) {
-	mxs, err := net.LookupMX(domain)
+	mxs, err := lookupMXNet(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +109,7 @@ func lookupMX(domain string) ([]Record, error) {
 }
 
 func lookupNS(domain string) ([]Record, error) {
-	nss, err := net.LookupNS(domain)
+	nss, err := lookupNSNet(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +121,7 @@ func lookupNS(domain string) ([]Record, error) {
 }
 
 func lookupTXT(domain string) ([]Record, error) {
-	txts, err := net.LookupTXT(domain)
+	txts, err := lookupTXTNet(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +133,7 @@ func lookupTXT(domain string) ([]Record, error) {
 }
 
 func lookupCNAME(domain string) ([]Record, error) {
-	cname, err := net.LookupCNAME(domain)
+	cname, err := lookupCNAMENet(domain)
 	if err != nil {
 		return nil, err
 	}

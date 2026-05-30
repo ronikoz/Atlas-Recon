@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,9 +295,177 @@ func TestResultsJSON(t *testing.T) {
 	}
 }
 
+func TestNativeDNSStoredInResults(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "results.db")
+	tempConfig(t, true, dbPath)
+
+	exitCode, stdout, stderr := captureOutput(func() int {
+		return Execute([]string{"ct", "dns", "localhost", "--types", "A", "--json"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("expected dns command to pass, exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+
+	records := storedRecords(t)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 stored record, got %d", len(records))
+	}
+	assertStoredPayload(t, records[0], "dns", "dns", `"records"`)
+}
+
+func TestNativeWebStoredInResults(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<title>Stored</title>"))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "results.db")
+	tempConfig(t, true, dbPath)
+
+	exitCode, stdout, stderr := captureOutput(func() int {
+		return Execute([]string{"ct", "web", server.URL, "--json"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("expected web command to pass, exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+
+	records := storedRecords(t)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 stored record, got %d", len(records))
+	}
+	assertStoredPayload(t, records[0], "web", "web", `"title":"Stored"`)
+}
+
+func TestLanDiscoverStoredInResults(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "results.db")
+	t.Setenv("CT_GRAPH_DB", filepath.Join(dir, "lan-graph.db"))
+	tempConfig(t, true, dbPath)
+
+	exitCode, stdout, stderr := captureOutput(func() int {
+		return Execute([]string{"ct", "lan", "discover", "--cidr", "127.0.0.1/32", "--ports", "1", "--inspect=false", "--json"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("expected lan discover to pass, exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+
+	records := storedRecords(t)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 stored record, got %d", len(records))
+	}
+	assertStoredPayload(t, records[0], "lan discover", "lan_discover", `"cidr":"127.0.0.1/32"`)
+}
+
+func TestLanMapExportsStoredGraph(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "results.db")
+	t.Setenv("CT_GRAPH_DB", filepath.Join(dir, "lan-graph.db"))
+	tempConfig(t, true, dbPath)
+
+	exitCode, stdout, stderr := captureOutput(func() int {
+		return Execute([]string{"ct", "lan", "discover", "--cidr", "127.0.0.1/32", "--ports", "1", "--inspect=false", "--json"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("expected lan discover to pass, exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+
+	exitCode, stdout, stderr = captureOutput(func() int {
+		return Execute([]string{"ct", "lan", "map", "--format", "markdown"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("expected lan map to pass, exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "# LAN Map") || !strings.Contains(stdout, "127.0.0.1") {
+		t.Fatalf("unexpected map output: %s", stdout)
+	}
+}
+
+func TestLanCrawlJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<title>Root</title><a href="/next">next</a>`))
+		case "/next":
+			_, _ = w.Write([]byte(`<title>Next</title>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "results.db")
+	t.Setenv("CT_GRAPH_DB", filepath.Join(dir, "lan-graph.db"))
+	tempConfig(t, true, dbPath)
+
+	exitCode, stdout, stderr := captureOutput(func() int {
+		return Execute([]string{"ct", "lan", "crawl", "--cidr", "127.0.0.1/32", "--ports", parsed.Port(), "--depth", "1", "--max-pages", "5", "--json"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("expected lan crawl to pass, exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	var out struct {
+		ScanID string `json:"scan_id"`
+		Pages  []struct {
+			Title string `json:"title"`
+		} `json:"pages"`
+		Links []struct {
+			ToURL string `json:"to_url"`
+		} `json:"links"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &out); err != nil {
+		t.Fatalf("invalid crawl JSON: %v\n%s", err, stdout)
+	}
+	if out.ScanID == "" || len(out.Pages) != 2 || len(out.Links) != 1 {
+		t.Fatalf("unexpected crawl output: %+v", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+type storedRecord struct {
+	Kind    string `json:"kind"`
+	Command string `json:"command"`
+	Payload string `json:"payload"`
+}
+
+func storedRecords(t *testing.T) []storedRecord {
+	t.Helper()
+	exitCode, stdout, stderr := captureOutput(func() int {
+		return Execute([]string{"ct", "results", "--json"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("results --json failed: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	var records []storedRecord
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &records); err != nil {
+		t.Fatalf("results output was not storedRecord JSON: %v\nstdout=%s", err, stdout)
+	}
+	return records
+}
+
+func assertStoredPayload(t *testing.T, record storedRecord, command string, kind string, payloadSubstr string) {
+	t.Helper()
+	if record.Command != command {
+		t.Fatalf("expected command %q, got %q", command, record.Command)
+	}
+	if record.Kind != kind {
+		t.Fatalf("expected kind %q, got %q", kind, record.Kind)
+	}
+	if !strings.Contains(record.Payload, payloadSubstr) {
+		t.Fatalf("expected payload to contain %q, got %s", payloadSubstr, record.Payload)
+	}
+}
 
 func mapKeys(m map[string]interface{}) []string {
 	var keys []string

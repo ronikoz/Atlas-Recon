@@ -14,6 +14,7 @@ import (
 	"github.com/ronikoz/atlas-recon/internal/config"
 	"github.com/ronikoz/atlas-recon/internal/crawl"
 	"github.com/ronikoz/atlas-recon/internal/dns"
+	"github.com/ronikoz/atlas-recon/internal/graph"
 	"github.com/ronikoz/atlas-recon/internal/plugins"
 	"github.com/ronikoz/atlas-recon/internal/runner"
 	"github.com/ronikoz/atlas-recon/internal/scanner"
@@ -345,6 +346,7 @@ func lanDiscoverCmd() *cobra.Command {
 	var timeoutSec int
 	var inspect bool
 	var insecure bool
+	var noStore bool
 
 	cmd := &cobra.Command{
 		Use:   "discover",
@@ -358,7 +360,7 @@ Examples:
   ct lan discover --cidr [IP_ADDRESS]/24 --ports 80,443,8080,8443
   ct lan discover --local --ports 80,443 --inspect --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLanDiscover(cidrStr, useLocal, portSpec, maxHosts, timeoutSec, inspect, insecure)
+			return runLanDiscover(cidrStr, useLocal, portSpec, maxHosts, timeoutSec, inspect, insecure, noStore)
 		},
 	}
 	cmd.Flags().StringVar(&cidrStr, "cidr", "", "CIDR range to scan (e.g. [IP_ADDRESS]/24)")
@@ -368,33 +370,61 @@ Examples:
 	cmd.Flags().IntVar(&timeoutSec, "timeout", 0, "per-host scan timeout in seconds (default from config)")
 	cmd.Flags().BoolVar(&inspect, "inspect", true, "probe HTTP(S) services for metadata")
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "skip TLS certificate verification")
+	cmd.Flags().BoolVar(&noStore, "no-store", false, "skip storing LAN graph data")
 	cmd.MarkFlagsOneRequired("cidr", "local")
 	return cmd
 }
 
 func lanCrawlCmd() *cobra.Command {
+	var cidrStr string
+	var useLocal bool
+	var portSpec string
+	var maxHosts int
+	var timeoutSec int
+	var depth int
+	var maxPages int
+	var insecure bool
+	var allowExternal bool
+	var noStore bool
+
 	cmd := &cobra.Command{
 		Use:   "crawl",
-		Short: "Crawl HTTP(S) services discovered on a LAN (not yet implemented)",
+		Short: "Crawl HTTP(S) services discovered on a LAN",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("lan crawl is not yet implemented")
+			return runLanCrawl(cidrStr, useLocal, portSpec, maxHosts, timeoutSec, depth, maxPages, insecure, allowExternal, noStore)
 		},
 	}
+	cmd.Flags().StringVar(&cidrStr, "cidr", "", "CIDR range to scan and crawl")
+	cmd.Flags().BoolVar(&useLocal, "local", false, "auto-detect local private interface CIDRs")
+	cmd.Flags().StringVar(&portSpec, "ports", "80,443,8080,8443", "ports to scan before crawling")
+	cmd.Flags().IntVar(&maxHosts, "max-hosts", 256, "maximum hosts to scan")
+	cmd.Flags().IntVar(&timeoutSec, "timeout", 0, "per-request timeout in seconds (default from config)")
+	cmd.Flags().IntVar(&depth, "depth", 1, "maximum crawl depth")
+	cmd.Flags().IntVar(&maxPages, "max-pages", 500, "maximum pages to crawl")
+	cmd.Flags().BoolVar(&insecure, "insecure", false, "skip TLS certificate verification during service inspection")
+	cmd.Flags().BoolVar(&allowExternal, "allow-external-links", false, "allow crawling outside discovered LAN service hosts")
+	cmd.Flags().BoolVar(&noStore, "no-store", false, "skip storing LAN graph data")
+	cmd.MarkFlagsOneRequired("cidr", "local")
 	return cmd
 }
 
 func lanMapCmd() *cobra.Command {
+	var scanID string
+	var format string
 	cmd := &cobra.Command{
 		Use:   "map",
-		Short: "Export the most recent LAN scan map (not yet implemented)",
+		Short: "Export a stored LAN scan map",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("lan map is not yet implemented")
+			return runLanMap(scanID, format)
 		},
 	}
+	cmd.Flags().StringVar(&scanID, "scan-id", "", "scan id to export (default: most recent)")
+	cmd.Flags().StringVar(&format, "format", "markdown", "export format: json, markdown, or dot")
 	return cmd
 }
 
-func runLanDiscover(cidrStr string, useLocal bool, portSpec string, maxHosts int, timeoutSec int, inspect bool, insecure bool) error {
+func runLanDiscover(cidrStr string, useLocal bool, portSpec string, maxHosts int, timeoutSec int, inspect bool, insecure bool, noStore bool) error {
+	started := time.Now()
 	// Resolve CIDR ranges
 	var cidrs []*net.IPNet // shadowed; use net package below
 	if useLocal {
@@ -464,16 +494,21 @@ func runLanDiscover(cidrStr string, useLocal bool, portSpec string, maxHosts int
 	// Run HTTP(S) inspection if requested
 	type enrichedHost struct {
 		IP       string               `json:"ip"`
-		Ports    []scanner.PortResult  `json:"open_ports"`
-		Services []crawl.ServiceInfo   `json:"services,omitempty"`
+		Ports    []scanner.PortResult `json:"open_ports"`
+		Services []crawl.ServiceInfo  `json:"services,omitempty"`
 	}
 	type discoverOutput struct {
-		CIDR  string          `json:"cidr"`
-		Hosts []enrichedHost  `json:"hosts"`
+		CIDR  string         `json:"cidr"`
+		Hosts []enrichedHost `json:"hosts"`
 	}
 
 	var outputs []discoverOutput
+	graphScan := &graph.ScanNode{
+		ID:        resultID("lan"),
+		StartedAt: started,
+	}
 	for _, result := range allResults {
+		graphScan.CIDRs = append(graphScan.CIDRs, result.CIDR)
 		out := discoverOutput{CIDR: result.CIDR}
 		for _, host := range result.Hosts {
 			eh := enrichedHost{IP: host.IP, Ports: host.OpenPorts}
@@ -489,8 +524,20 @@ func runLanDiscover(cidrStr string, useLocal bool, portSpec string, maxHosts int
 				}
 			}
 			out.Hosts = append(out.Hosts, eh)
+			graphScan.Hosts = append(graphScan.Hosts, graphHost(result.CIDR, host.IP, eh.Ports, eh.Services))
 		}
 		outputs = append(outputs, out)
+	}
+	finished := time.Now()
+	graphScan.EndedAt = finished
+	storeNativePayload("lan discover", "lan_discover", []string{cidrArg(cidrStr, useLocal), "--ports", portSpec}, outputs, started, finished, "")
+	if !noStore {
+		if err := saveGraphScan(graphScan); err != nil {
+			return err
+		}
+		if !cfg.Output.JSON {
+			fmt.Fprintf(os.Stdout, "Stored LAN graph scan: %s\n", graphScan.ID)
+		}
 	}
 
 	if cfg.Output.JSON {
@@ -499,6 +546,119 @@ func runLanDiscover(cidrStr string, useLocal bool, portSpec string, maxHosts int
 		return enc.Encode(outputs)
 	}
 
+	return nil
+}
+
+func runLanMap(scanID string, format string) error {
+	store, err := graph.Open(graph.DefaultDBPath())
+	if err != nil {
+		return fmt.Errorf("opening graph store: %w", err)
+	}
+	defer store.Close()
+	scan, err := store.LoadScan(scanID)
+	if err != nil {
+		if scanID == "" {
+			return fmt.Errorf("loading latest LAN graph: %w", err)
+		}
+		return fmt.Errorf("loading LAN graph %s: %w", scanID, err)
+	}
+	switch strings.ToLower(format) {
+	case "json":
+		data, err := graph.ExportJSON(scan)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+	case "markdown", "md":
+		fmt.Print(graph.ExportMarkdown(scan))
+	case "dot":
+		fmt.Print(graph.ExportDOT(scan))
+	default:
+		return fmt.Errorf("unsupported map format %q", format)
+	}
+	return nil
+}
+
+func runLanCrawl(cidrStr string, useLocal bool, portSpec string, maxHosts int, timeoutSec int, depth int, maxPages int, insecure bool, allowExternal bool, noStore bool) error {
+	started := time.Now()
+	cidrs, err := resolveLanCIDRs(cidrStr, useLocal)
+	if err != nil {
+		return err
+	}
+	ports, err := scanner.ParsePorts(portSpec)
+	if err != nil {
+		return fmt.Errorf("parsing ports: %w", err)
+	}
+	timeout := time.Duration(cfg.Timeouts.CommandSeconds) * time.Second
+	if timeoutSec > 0 {
+		timeout = time.Duration(timeoutSec) * time.Second
+	}
+	graphScan := &graph.ScanNode{ID: resultID("lan-crawl"), StartedAt: started}
+	var seedURLs []string
+	for _, cidr := range cidrs {
+		graphScan.CIDRs = append(graphScan.CIDRs, cidr.String())
+		result, err := crawl.RunDiscovery(cidr, ports, maxHosts, cfg.Concurrency, timeout)
+		if err != nil {
+			if !cfg.Output.JSON {
+				fmt.Fprintf(os.Stderr, "discovery error for %s: %v\n", cidr, err)
+			}
+			continue
+		}
+		for _, host := range result.Hosts {
+			services := crawl.InspectHostServices(host, crawl.InspectOptions{Timeout: timeout, Insecure: insecure})
+			graphScan.Hosts = append(graphScan.Hosts, graphHost(result.CIDR, host.IP, host.OpenPorts, services))
+			for _, service := range services {
+				if service.Error == "" && service.Scheme != "" {
+					seedURLs = append(seedURLs, fmt.Sprintf("%s://%s:%d/", service.Scheme, service.Host, service.Port))
+				}
+			}
+		}
+	}
+	crawlResult := crawl.RunCrawl(seedURLs, crawl.CrawlOptions{
+		MaxDepth:      depth,
+		MaxPages:      maxPages,
+		Timeout:       timeout,
+		AllowExternal: allowExternal,
+		AllowedCIDRs:  cidrs,
+	})
+	for _, page := range crawlResult.Pages {
+		graphScan.Pages = append(graphScan.Pages, graph.PageNode{
+			URL:         page.URL,
+			StatusCode:  page.StatusCode,
+			Title:       page.Title,
+			ContentType: page.ContentType,
+			Depth:       page.Depth,
+		})
+	}
+	for _, link := range crawlResult.Links {
+		graphScan.Links = append(graphScan.Links, graph.LinkEdge{FromURL: link.FromURL, ToURL: link.ToURL})
+	}
+	finished := time.Now()
+	graphScan.EndedAt = finished
+	output := struct {
+		ScanID string             `json:"scan_id"`
+		Pages  []crawl.PageResult `json:"pages"`
+		Links  []crawl.LinkResult `json:"links"`
+	}{
+		ScanID: graphScan.ID,
+		Pages:  crawlResult.Pages,
+		Links:  crawlResult.Links,
+	}
+	storeNativePayload("lan crawl", "lan_crawl", []string{cidrArg(cidrStr, useLocal), "--ports", portSpec}, output, started, finished, "")
+	if !noStore {
+		if err := saveGraphScan(graphScan); err != nil {
+			return err
+		}
+	}
+	if cfg.Output.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(output)
+	}
+	fmt.Fprintf(os.Stdout, "Crawled %d pages from %d seed services.\n", len(crawlResult.Pages), len(seedURLs))
+	if !noStore {
+		fmt.Fprintf(os.Stdout, "Stored LAN graph scan: %s\n", graphScan.ID)
+	}
 	return nil
 }
 
@@ -537,6 +697,7 @@ func runScan(target, portSpec string) error {
 }
 
 func runNativeDNS(domain, typesStr string) error {
+	started := time.Now()
 	rtypes := strings.Split(typesStr, ",")
 	for i := range rtypes {
 		rtypes[i] = strings.TrimSpace(rtypes[i])
@@ -545,6 +706,10 @@ func runNativeDNS(domain, typesStr string) error {
 	if err != nil {
 		return err
 	}
+	payload := struct {
+		Records []dns.Record `json:"records"`
+	}{Records: records}
+	storeNativePayload("dns", "dns", []string{domain, "--types", typesStr}, payload, started, time.Now(), "")
 	if cfg.Output.JSON {
 		data, err := dns.RecordsToJSON(records)
 		if err != nil {
@@ -558,6 +723,7 @@ func runNativeDNS(domain, typesStr string) error {
 }
 
 func runNativeWeb(target string, timeoutSec int, insecure bool) error {
+	started := time.Now()
 	timeout := time.Duration(cfg.Timeouts.CommandSeconds)
 	if timeoutSec > 0 {
 		timeout = time.Duration(timeoutSec)
@@ -571,6 +737,11 @@ func runNativeWeb(target string, timeoutSec int, insecure bool) error {
 	if err != nil {
 		return err
 	}
+	status := ""
+	if result.Error != "" {
+		status = string(runner.StatusFailed)
+	}
+	storeNativePayload("web", "web", []string{target}, result, started, time.Now(), status)
 
 	if cfg.Output.JSON {
 		data, err := web.ProbeToJSON(result)
@@ -839,6 +1010,110 @@ func storeScanResult(args []string, result *scanner.ScanResult) {
 	if err := resultStore.SaveRecord(record); err != nil {
 		fmt.Fprintf(os.Stderr, "results store failed: %v\n", err)
 	}
+}
+
+func saveGraphScan(scan *graph.ScanNode) error {
+	store, err := graph.Open(graph.DefaultDBPath())
+	if err != nil {
+		return fmt.Errorf("opening graph store: %w", err)
+	}
+	defer store.Close()
+	if err := store.SaveScan(scan); err != nil {
+		return fmt.Errorf("saving graph scan: %w", err)
+	}
+	return nil
+}
+
+func graphHost(cidr string, ip string, ports []scanner.PortResult, services []crawl.ServiceInfo) graph.HostNode {
+	host := graph.HostNode{IP: ip, CIDR: cidr}
+	for _, port := range ports {
+		host.OpenPorts = append(host.OpenPorts, graph.PortNode{
+			Port:    port.Port,
+			State:   port.State,
+			Service: port.Service,
+		})
+	}
+	for _, service := range services {
+		node := graph.ServiceNode{
+			HostIP:     service.Host,
+			Port:       service.Port,
+			Scheme:     service.Scheme,
+			Protocol:   service.Scheme,
+			StatusCode: service.StatusCode,
+			Title:      service.Title,
+			Error:      service.Error,
+		}
+		if service.TLS != nil {
+			node.TLSSubject = service.TLS.Subject
+			node.TLSIssuer = service.TLS.Issuer
+			node.TLSNotBefore = service.TLS.NotBefore
+			node.TLSNotAfter = service.TLS.NotAfter
+			node.TLSFingerprint = service.TLS.FingerprintSHA256
+		}
+		host.Services = append(host.Services, node)
+	}
+	return host
+}
+
+func resolveLanCIDRs(cidrStr string, useLocal bool) ([]*net.IPNet, error) {
+	if useLocal {
+		localCIDRs, err := crawl.DiscoverLocalCIDRs()
+		if err != nil {
+			return nil, fmt.Errorf("detecting local interfaces: %w", err)
+		}
+		if len(localCIDRs) == 0 {
+			return nil, fmt.Errorf("no private network interfaces found")
+		}
+		return localCIDRs, nil
+	}
+	cidr, err := crawl.ParseCIDR(cidrStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CIDR: %w", err)
+	}
+	if err := crawl.ValidateScope(cidr); err != nil {
+		return nil, err
+	}
+	return []*net.IPNet{cidr}, nil
+}
+
+func storeNativePayload(command string, kind string, args []string, payload any, started time.Time, finished time.Time, status string) {
+	if resultStore == nil {
+		return
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "results store failed: %v\n", err)
+		return
+	}
+	if status == "" {
+		status = string(runner.StatusSuccess)
+	}
+	exitCode := 0
+	if status == string(runner.StatusFailed) {
+		exitCode = 1
+	}
+	record := storage.Record{
+		ID:         resultID(strings.ReplaceAll(command, " ", "-")),
+		Kind:       kind,
+		Command:    command,
+		Args:       args,
+		StartedAt:  started,
+		FinishedAt: finished,
+		DurationMs: finished.Sub(started).Milliseconds(),
+		ExitCode:   exitCode,
+		Status:     status,
+		Payload:    string(data),
+	}
+	if err := resultStore.SaveRecord(record); err != nil {
+		fmt.Fprintf(os.Stderr, "results store failed: %v\n", err)
+	}
+}
+
+func cidrArg(cidrStr string, useLocal bool) string {
+	if useLocal {
+		return "--local"
+	}
+	return "--cidr=" + cidrStr
 }
 
 func resultID(prefix string) string {

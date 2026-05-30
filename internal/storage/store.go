@@ -38,19 +38,19 @@ type Store struct {
 }
 
 type Record struct {
-	ID         string
-	Kind       string
-	Command    string
-	Args       []string
-	StartedAt  time.Time
-	FinishedAt time.Time
-	DurationMs int64
-	ExitCode   int
-	Status     string
-	Stdout     string
-	Stderr     string
-	Error      string
-	Payload    string
+	ID         string    `json:"id"`
+	Kind       string    `json:"kind"`
+	Command    string    `json:"command"`
+	Args       []string  `json:"args"`
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
+	DurationMs int64     `json:"duration_ms"`
+	ExitCode   int       `json:"exit_code"`
+	Status     string    `json:"status"`
+	Stdout     string    `json:"stdout"`
+	Stderr     string    `json:"stderr"`
+	Error      string    `json:"error"`
+	Payload    string    `json:"payload"`
 }
 
 type ListOptions struct {

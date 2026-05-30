@@ -1,9 +1,4 @@
 import pytest
-import os
-import sys
-
-# Add python plugins directory to the path so we can import the module directly
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../plugins/python')))
 
 from dns_lookup import normalize_ipv6, concat_txt
 

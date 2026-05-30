@@ -28,7 +28,7 @@ Atlas-Recon is under active development. The codebase includes:
 - A Go CLI with 16 commands (15 original + `lan`).
 - **Native Go** implementations for `scan`, `dns`, `web`, and `lan discover` — no Python required.
 - Native concurrent TCP port scanner.
-- LAN discovery with HTTP(S) service inspection (CIDR scanning, TLS extraction).
+- LAN discovery and bounded HTTP(S) crawling with graph export.
 - 14 embedded Python plugins for OSINT, geospatial, social, market, conflict, and reporting — with `--plugin` fallback on native commands.
 - Automatic extraction of embedded plugins and Python virtual environment management.
 - Optional SQLite result storage with auto-pruning.
@@ -77,6 +77,8 @@ go build -o ct ./cmd/ct
 # LAN discovery (Go, no Python)
 ./ct lan discover --local --ports 80,443,8080,8443
 ./ct lan discover --cidr [IP_ADDRESS]/24 --ports 80,443 --inspect --json
+./ct lan crawl --cidr [IP_ADDRESS]/24 --ports 80,443 --depth 1 --max-pages 100 --json
+./ct lan map --format markdown
 
 # OSINT and reconnaissance (Python plugins)
 ./ct osint example.com
@@ -112,8 +114,8 @@ go build -o ct ./cmd/ct
 | `dns` | DNS record lookup (A, AAAA, MX, NS, TXT, CNAME) | Native Go · `--plugin` for Python fallback |
 | `web` | HTTP/HTTPS probing with TLS extraction | Native Go · `--plugin` for Python fallback |
 | `lan discover` | LAN host and service discovery | Native Go |
-| `lan crawl` | Bounded LAN web crawler | Planned |
-| `lan map` | Graph export (JSON, Markdown, DOT) | Planned |
+| `lan crawl` | Bounded LAN web crawler | Native Go |
+| `lan map` | Graph export (JSON, Markdown, DOT) | Native Go |
 | `dashboard` | Interactive terminal UI | Native Go |
 | `results` | List, prune, or clear stored results | Native Go |
 | `osint` | Domain OSINT lookup | Python plugin |
@@ -137,6 +139,7 @@ Commands support `--json` for structured output. The canonical schema reference 
 | `dns` (native) | `{"records": [dns.Record, ...]}` |
 | `web` (native) | `web.ProbeResult` — status, headers, title, TLS |
 | `lan discover` | `crawl.DiscoveryResult` — CIDR, hosts, open ports, services |
+| `lan crawl` | `{"scan_id": "...", "pages": [...], "links": [...]}` |
 | `results` | Array of `storage.Record` |
 | Plugin commands | `runner.Result` — universal envelope with stdout/stderr/timing |
 
@@ -201,6 +204,7 @@ internal/scanner/           Native concurrent TCP scanner
 internal/dns/               Native DNS resolver (stdlib)
 internal/web/               Native HTTP/HTTPS probe + TLS extraction
 internal/crawl/             LAN discovery, service inspection, scope management
+internal/graph/             LAN graph model, SQLite store, map exporters
 internal/plugins/           Embedded plugin discovery and extraction
 internal/runner/            Python runner, dependency setup, job queue
 internal/storage/           SQLite result storage
@@ -249,9 +253,9 @@ Before submitting changes:
 | CLI tests + result envelope docs | ✅ |
 | Native DNS + Web modules | ✅ |
 | LAN discovery + HTTP inspection | ✅ |
-| Graph model + exporters (JSON/Markdown/DOT) | Next |
-| Bounded LAN crawler | Planned |
-| TUI LAN integration | Planned |
+| Graph model + exporters (JSON/Markdown/DOT) | ✅ |
+| Bounded LAN crawler | ✅ initial |
+| TUI LAN integration | Next |
 | Native replacements for remaining Python plugins | Planned |
 | Rate limiter, HTTP client factory, version embedding | Planned |
 

@@ -4,7 +4,7 @@
 **Method:** KISS — every task is atomic, testable, and <200 lines changed where possible.
 **Project:** Open-source (MIT) · Educational and authorized testing only · [Legal Disclaimer](../README.md#legal-disclaimer)
 
-### Progress: 31/72 tasks (43%) · Phases 1-4 done · 77+ tests · 8 packages
+### Progress: 48/72 tasks (67%) · Phases 1-5 done · Phase 6 initial done · 100+ tests · 9 packages
 
 | Phase | Tasks Complete | Status |
 |---|---|---|
@@ -12,23 +12,18 @@
 | 2: Native DNS + Web | 13/13 | ✅ |
 | 3: LAN Discovery Core | 8/8 | ✅ |
 | 4: HTTP Inspection | 3/3 | ✅ |
-| **5: Graph & Exporters** | 0/9 | **← Next** |
-| 6: Bounded Crawler | 0/9 | ⬜ |
-| 7: TUI LAN | 0/4 | ⬜ |
+| 5: Graph & Exporters | 9/9 | ✅ |
+| **6: Bounded Crawler** | 8/9 | **initial complete** |
+| 7: TUI LAN | 0/4 | **← Next** |
 | 8: Plugin Migration | 0/12 | ⬜ |
 | 9: Infrastructure | 0/7 | ⬜ |
 
-### What's Next: Phase 5 Tasks
+### What's Next: Phase 7 Tasks
 
-- [ ] 5.1 — `internal/graph/model.go` — node/edge types
-- [ ] 5.2 — `internal/graph/store.go` — SQLite persistence
-- [ ] 5.3 — `internal/graph/store_test.go` — CRUD + relationship tests
-- [ ] 5.4 — `internal/graph/export.go` — JSON exporter
-- [ ] 5.5 — `internal/graph/export.go` — Markdown exporter
-- [ ] 5.6 — `internal/graph/export.go` — DOT exporter
-- [ ] 5.7 — `internal/graph/export_test.go` — snapshot tests
-- [ ] 5.8 — `internal/cli/cli.go` — wire graph storage into `lan discover`
-- [ ] 5.9 — `internal/cli/cli.go` — implement `lan map` subcommand
+- [ ] 7.1 — `internal/tui/tui.go` — add native LAN commands to menu
+- [ ] 7.2 — `internal/tui/tui.go` — stream LAN discovery progress
+- [ ] 7.3 — `internal/tui/tui.go` — stream LAN crawl progress
+- [ ] 7.4 — `internal/tui/tui.go` — render map summaries
 
 ---
 
@@ -241,96 +236,96 @@
 
 ---
 
-## Phase 5: Graph Model & Exporters ⬜
+## Phase 5: Graph Model & Exporters ✅
 
-### Task 5.1 [CODE] ⬜ — Define graph data model
+### Task 5.1 [CODE] ✅ — Define graph data model
 **File:** `internal/graph/model.go` (new)
 - Types: ScanNode, HostNode, ServiceNode, PageNode, CertNode, LinkEdge, RedirectEdge
 - UUID IDs, timestamps, JSON tags
 
-### Task 5.2 [CODE] ⬜ — Create graph SQLite storage
+### Task 5.2 [CODE] ✅ — Create graph SQLite storage
 **File:** `internal/graph/store.go` (new)
 - Schema: lan_scans, lan_hosts, lan_services, lan_pages, lan_links, lan_certs
 - OpenGraph, SaveScan, SaveHost, SaveService, GetScanHosts, GetHostServices
 
-### Task 5.3 [TEST] ⬜ — Add graph store tests
+### Task 5.3 [TEST] ✅ — Add graph store tests
 **File:** `internal/graph/store_test.go` (new)
 - TestSaveAndRetrieveScan, TestSaveHostDedup, TestHostServiceRelation,
   TestPageLinkGraph
 - Temp SQLite DB per test
 
-### Task 5.4 [CODE] ⬜ — Implement JSON graph exporter
+### Task 5.4 [CODE] ✅ — Implement JSON graph exporter
 **File:** `internal/graph/export.go` (new)
 - ExportJSON(store, scanID) → structured JSON with nodes + edges
 
-### Task 5.5 [CODE] ⬜ — Implement Markdown graph exporter
+### Task 5.5 [CODE] ✅ — Implement Markdown graph exporter
 **File:** `internal/graph/export.go`
 - ExportMarkdown(store, scanID) → summary tables per host
 
-### Task 5.6 [CODE] ⬜ — Implement DOT graph exporter
+### Task 5.6 [CODE] ✅ — Implement DOT graph exporter
 **File:** `internal/graph/export.go`
 - ExportDOT(store, scanID) → Graphviz digraph
 
-### Task 5.7 [TEST] ⬜ — Add exporter tests
+### Task 5.7 [TEST] ✅ — Add exporter tests
 **File:** `internal/graph/export_test.go` (new)
 - TestExportJSON, TestExportMarkdown, TestExportDOT
 - Known input data, snapshot output
 
-### Task 5.8 [CODE] ⬜ — Wire graph storage into LAN discovery
+### Task 5.8 [CODE] ✅ — Wire graph storage into LAN discovery
 **File:** `internal/cli/cli.go`
 - After discovery: save scan + hosts + services to graph store
 - `--no-store` flag to skip persistence
 - Graph DB path: `~/.cache/atlas-recon/lan-graph.db`
 
-### Task 5.9 [CODE] ⬜ — Implement `lan map` subcommand
+### Task 5.9 [CODE] ✅ — Implement `lan map` subcommand
 **File:** `internal/cli/cli.go`
 - `--scan-id`, `--format json|markdown|dot` flags
 - Default: most recent scan
 
-**Phase 5 gate:** `./ct lan map --format markdown` displays stored graph. All graph tests pass.
+**Phase 5 gate:** ✅ `./ct lan map --format markdown` displays stored graph. All graph tests pass.
 
 ---
 
-## Phase 6: Bounded LAN Crawler ⬜
+## Phase 6: Bounded LAN Crawler ✅ initial
 
-### Task 6.1 [CODE] ⬜ — Implement URL frontier
+### Task 6.1 [CODE] ✅ — Implement URL frontier
 **File:** `internal/crawl/frontier.go` (new)
 - Frontier type: maxDepth, maxPages, visited set, FIFO queue
 - Add(), Next(), Visited(), Remaining()
 - Scope enforcement via configurable rules
 
-### Task 6.2 [CODE] ⬜ — Implement URL normalizer
+### Task 6.2 [CODE] ✅ — Implement URL normalizer
 **File:** `internal/crawl/frontier.go`
 - NormalizeURL: resolve relative, lowercase scheme+host, remove default ports, strip fragments
 
-### Task 6.3 [CODE] ⬜ — Implement scope checker
+### Task 6.3 [CODE] ✅ — Implement scope checker
 **File:** `internal/crawl/frontier.go`
 - IsInScope: same-host check, same-LAN CIDR check, allowExternal override
 
-### Task 6.4 [TEST] ⬜ — Add frontier tests
+### Task 6.4 [TEST] ✅ — Add frontier tests
 **File:** `internal/crawl/frontier_test.go` (new)
 - TestFrontierDepthLimit, TestFrontierPageLimit, TestFrontierVisitedDedup,
   TestNormalizeURL (fragments, default ports, trailing slashes),
   TestIsInScope (same host, different host, allowExternal)
 
-### Task 6.5 [CODE] ⬜ — Implement page crawler
+### Task 6.5 [CODE] ✅ — Implement page crawler
 **File:** `internal/crawl/crawler.go` (new)
 - CrawlPage: fetch, extract links from HTML (<a href>, <link href>)
 - PageResult: URL, status, title, content_type, links_found, external_links_skipped
 
-### Task 6.6 [CODE] ⬜ — Implement crawl orchestrator
+### Task 6.6 [CODE] ✅ — Implement crawl orchestrator
 **File:** `internal/crawl/crawler.go`
 - RunCrawl: BFS, worker pool, progress tracking
 - CrawlOptions: maxDepth, maxPages, scopeHosts, allowExternal, timeout, concurrency
 
-### Task 6.7 [TEST] ⬜ — Add crawler tests
+### Task 6.7 [TEST] ✅ — Add crawler tests
 **File:** `internal/crawl/crawler_test.go` (new)
 - TestCrawlSinglePage, TestCrawlDepth1, TestCrawlDepth2,
   TestCrawlExternalLink, TestCrawlMaxPages, TestCrawlRedirectExternal,
   TestCrawlTimeout, TestCrawlRedirectChain
 - All use httptest servers with interlinked HTML
 
-### Task 6.8 [CODE] ⬜ — Wire crawl into CLI
+### Task 6.8 [CODE] ✅ — Wire crawl into CLI
 **File:** `internal/cli/cli.go`
 - Implement lanCrawlCmd: --cidr/--local/--ports/--depth/--max-pages/--allow-external-links/--insecure
 - Flow: discover → inspect → crawl → store graph → emit
